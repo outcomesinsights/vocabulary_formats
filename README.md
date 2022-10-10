@@ -4,7 +4,7 @@ PCRE that verify the correctness of codes used in various medical terminologies
 
 ## Why?
 
-In dealing with various medical terminologies, there are occassios when we need to ensure we are using valid codes from sources such as claims data, vocabulary files, or user-entered data.  It is not always feesible to compare these codes to a database of known valid codes.  The database may not be up-to-date.  There might be codes that are unknown to the database.  Access to the database might be difficult to set up.
+In dealing with various medical terminologies, there are occasions when we need to ensure we are using valid codes from sources such as claims data, vocabulary files, or user-entered data.  It is not always feasible to compare these codes to a database of known valid codes.  The database may not be up-to-date.  There might be codes that are unknown to the database.  Access to the database might be difficult to set up.
 
 Sometimes it's easier to see if a code "looks" like a valid code, hence these regexps.  The goal is to provide a set of regexps that verify if a code from a given terminology "looks" like the kind of code we expect.
 
@@ -18,7 +18,7 @@ Basically, if the regexp yields a false negative, it's not an acceptable regexp.
 
 ## CSV Format
 
-This respository contains a CSV file of regexps that have been gathered from various sources.  Here are the columns:
+This repository contains a CSV file of regexps that have been gathered from various sources.  Here are the columns:
 
 - vocabulary_id
   - Preferably the OMOP-related vocabulary_id associated with the terminology
