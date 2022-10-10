@@ -23,9 +23,9 @@ This repository contains a CSV file of regexps that have been gathered from vari
 - vocabulary_id
   - Preferably the OMOP-related vocabulary_id associated with the terminology
   - e.g. ICD9CM, NDC, CPT4
-- variant
-  - If the regexp is meant to apply to a specific variation of the expected code format
-  - e.g. ICD9CM and ICD10CM codes are often reported in Medicare claims data without the "." (dot) in the code
+  - variants
+    - If the regexp is meant to apply to a specific variation of the expected code format, add a suffix to the vocabulary_id
+    - e.g. ICD9CM and ICD10CM codes are often reported in Medicare claims data without the "." (dot) in the code so we'd name them ICD9CM.DOTLESS and ICD10CM.DOTLESS
 - regexp
   - The PCRE that matches the codes in the terminologies.  
 - source
