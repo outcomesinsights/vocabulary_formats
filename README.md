@@ -16,9 +16,11 @@ If the regexps are too restrictive, they might disqualify future valid codes.  F
 
 Basically, if the regexp yields a false negative, it's not an acceptable regexp.  If it yields a small number of false positives, we'll allow it.
 
-## CSV Format
+## Tab Seperated Values (TSV) Format
 
-This repository contains a CSV file of regexps that have been gathered from various sources.  Here are the columns:
+This repository contains a TSV file of regexps that have been gathered from various sources.  Tabs were chosen over commas to avoid needing to quote regexps that contain commas.
+
+Here are the columns:
 
 - vocabulary_id
   - Preferably the OMOP-related vocabulary_id associated with the terminology
