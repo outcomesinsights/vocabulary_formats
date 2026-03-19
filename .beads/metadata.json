@@ -1,0 +1,8 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "server",
+  "dolt_server_port": 3308,
+  "dolt_database": "beads_vocabulary_formats",
+  "project_id": "402a349e-782e-4be8-bbbe-3077b6860a79"
+}
