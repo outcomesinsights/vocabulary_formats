@@ -18,7 +18,13 @@ Basically, if the regexp yields a false negative, it's not an acceptable regexp.
 
 ## Tab Seperated Values (TSV) Format
 
-This repository contains a TSV file of regexps that have been gathered from various sources.  Tabs were chosen over commas to avoid needing to quote regexps that contain commas.
+This repository contains a TSV file of regexps that have been gathered from various sources.  Tabs were chosen over commas to avoid needing to quote regexps that contain commas.  This file is intended to be modified.
+
+### Parquet Format
+
+We needed a Parquet file for one of our projects, so we created it and decided to share it.
+
+Run `make all` to generate the Parquet file.
 
 Here are the columns:
 

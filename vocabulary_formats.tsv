@@ -1,7 +1,7 @@
 vocabulary_id	regexp	source	notes
 ICD9CM	^(V\d{2}(\.\d{1,2})?|\d{3}(\.\d{1,2})?|E\d{3}(\.\d)?)$	https://stackoverflow.com/a/9573066/14450422	
 ICD9CM.DOTLESS	^(V\d{2,4}|\d{3,5}|E\d{3,4})$		Medicare claims data often reports these without the dot
-ICD10CM	^\w{3}.?\w{0,4}$		
+ICD10CM	^\w{3}(\.\w{1,4})?$		
 ICD10CM.DOTLESS	^\w{3,7}$		Medicare claims data often reports these without the dot
 HCPCS	^\w\d{4}$		
 HCPCS.WITHMODIFIERS	^(\w\d{4}|\w{2})$		OMOP stores modifiers using the same vocabulary_id as HCPCS :-(
