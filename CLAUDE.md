@@ -1,17 +1,48 @@
 # vocabulary_formats
 
-> Collection of PCRE regular expressions to validate medical terminology codes (ICD9CM, ICD10CM, CPT4, HCPCS, NDC).
+> Two data tables: PCRE regexes that say whether a code *looks* valid for a vocabulary
+> (`vocabulary_formats.tsv`, 34 rows), and a registry mapping vocabulary labels seen in the wild to
+> OHDSI `vocabulary_id`s (`vocabulary_labels.tsv`, 22 rows).
 
 ## Status
 
 - **Active** — a member of the `codesets` habitat; tracked with `bd` (`vocabulary_formats-`) and `seeds` (`vfm-`).
-- Last meaningful work: 2026-07-25
+- Last meaningful work: 2026-07-27
 
-## THE RULE THAT GOVERNS EVERY EDIT — keep the regexes PERMISSIVE
+## THE TWO RULES THAT GOVERN EVERY EDIT
+
+### 1. The DEFAULT row targets CLAIMS-OBSERVABLE codes; variants carry the rest
+
+For each vocabulary, the **default** row targets what you would expect to see in **claims data —
+mostly billable**. Anything broader (the full vocabulary, retired concepts, alternate encodings) goes
+in a **named variant**: `.DOTLESS`, `.COMPLETE`, `.ALPHANUM`, `.WITHMODIFIERS`, `.WITHRETIRED`,
+`.UNPADDED`, `.NOBEHAVIOR`.
+
+This is not new — the `.DOTLESS` rows exist because Medicare claims often drop the dot, a
+claims-shaped concern from the repo's first commit. It had simply never been written down, so the
+default drifted.
+
+**The repo has TWO consumers pulling opposite ways, which is why the split is load-bearing:**
+
+1. **Claims canonicalization** (original) — billable codes, canonicalized before an exact join.
+2. **Literature validation** (via `litmine`) — *any* real code a paper printed, including
+   vocabularies that never appear on a US claim. SNOMED and WHO ICD-10 are here for this reason.
+
+Variants serve both without either winning. The failure mode is the **default quietly widening to
+mean "everything real"** — which is how `NDC` came to reject 26% of its own vocabulary (338,328 real
+9-digit codes) while nobody noticed the purpose had blurred. Decided in seed `vfm-k2n`, 2026-07-27.
+
+### 2. Keep the regexes PERMISSIVE
 
 Skew toward valid: accept anything that *could* be a valid code, tolerate a few false positives,
 **never reject a real code**. False negatives are unacceptable. This is not a style preference — it
 is the repo's entire contract with its consumers.
+
+**Rule 1 SCOPES rule 2, it does not overturn it.** A false negative is judged against **the row's own
+declared target**: a 9-digit NDC failing the claims-default `NDC` row is *correct*; the same code
+failing `NDC.COMPLETE` is a *bug*. Within a row's stated target false negatives remain unacceptable —
+both 2026-07-27 regressions (ICD10CM rejecting 1,953 three-character codes; NDC rejecting 338,328)
+were bugs precisely because the rejected codes sat squarely inside their own row's target.
 
 A regex validates FORMAT ("does this look like a code of vocabulary X?"). It cannot validate
 EXISTENCE ("is this a real, assigned code") — that is set membership, answered only by a lookup
@@ -78,14 +109,25 @@ Gotcha: ICD vocabularies are NON-standard in OMOP, so `standard_concept` is NULL
   `code_collector` and `litmine` (producers), `code_set_catalog` (whose `docs/ingest-formats.md`
   cites it). Because several repos depend on it, growing it is cheap and welcome — but a regression
   here propagates to all of them.
+- **First live consumer of BOTH tables** (2026-07-27): `litmine/validate.py` reads
+  `vocabulary_formats.tsv` for the regexes *and* `vocabulary_labels.tsv` to resolve the free-text
+  vocabulary label a paper printed, then existence-checks against the OHDSI concept table. It found
+  the registry's coverage complete for the 20-paper pilot — all 22 labels resolved, no unmapped rows.
+  Its `VOCABULARY_FORMATS_DIR` env var is how a consumer should locate this repo: by configuration,
+  never by an assumed sibling path.
 
 ## Open work (see `bd ready`)
 
-- Extend the format regexes beyond claims vocabularies to WHO ICD10, SNOMED, RxNorm, ICD10PCS, ATC,
-  DRG, ICD-O-3.
-- Add a SECOND table: the vocab-label id-normalization **registry** — every label seen in the wild
-  recorded verbatim, mapping to a known-good OHDSI `vocabulary_id` or to a **blank** meaning "not
-  supported in OHDSI as of now". The blank rows double as the producers' extract-but-don't-produce gate.
+Both of the previously-listed items **shipped 2026-07-25** (`vocabulary_formats-3h8` extended the
+regexes to 34 rows covering the non-claims vocabularies; `vocabulary_formats-e5s` added
+`vocabulary_labels.tsv`). What is open:
+
+- Make each row's **target** legible without reading the README. Today "is this row for claims or for
+  the full vocabulary?" is inferable only from the variant suffix and the `notes` prose. A `target`
+  column, or a documented naming convention, would make rule 1 checkable rather than remembered.
+- Rows for labels `litmine` has not met yet. The registry is a *registry*: an unseen label gets
+  appended verbatim, then mapped or left blank. `validate.py` prints unmapped labels for exactly this
+  purpose — feed its output back here.
 
 ## Domain Concepts
 
