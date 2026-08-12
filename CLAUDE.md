@@ -134,3 +134,7 @@ regexes to 34 rows covering the non-claims vocabularies; `vocabulary_formats-e5s
 - **vocabulary_id**: OMOP vocabulary identifier (e.g., ICD9CM, NDC, CPT4)
 - **DOTLESS variants**: Codes without decimal points, common in Medicare claims
 - **WITHMODIFIERS variants**: Include procedure modifiers in same vocabulary
+
+## Principles
+
+- A vocabulary's code format is ONE regexp that must match every code the vocabulary publishes, then be narrowed to admit as few non-codes as a plain regexp reasonably can — guarded by a test over the published set, because a miss is silent: the reference does not go wrong, it vanishes. — vfm-ges, 2026-08-12
