@@ -25,7 +25,9 @@ Corollary for the two tables: `vocabulary_formats.tsv` answers *"does this look 
 
 ## The patterns carry NO anchors — the caller supplies the boundary
 
-**Every `regexp` value matches a complete code and nothing more, but it is stored without `^`, `$`, `\A`, `\z` or `\b`.  Binding it to a boundary is the caller's job, and the caller must do it.**  Used bare, a pattern matches a code *inside* a longer string, so `I10 and some trailing prose` passes.
+**Every `regexp` value matches a complete code and nothing more, but it is stored without `^`, `$`, `\A`, `\z` or `\b`.  Binding it to a boundary is the caller's job, and the caller must do it.**
+
+Do not treat this as a small ergonomic detail.  Used bare, a pattern matches a code *inside* a longer string, so `I10 and some trailing prose` passes the `ICD10CM` row.  And for the short rows it is far worse than that: `HCPCS_MODIFIER`, `CPT4_MODIFIER` and `CPT4_HCPCS_MODIFIER` are all `\w{2}`, and `DRG` is `\d{3}`.  Unanchored, `\w{2}` is true for **any** value containing two consecutive word characters — the check does not weaken, it stops existing.
 
 This is deliberate, because the correct anchor differs by language and by job:
 
@@ -33,7 +35,8 @@ This is deliberate, because the correct anchor differs by language and by job:
 | --- | --- |
 | Ruby | `/\A(?:#{pattern})\z/` — **not** `^…$`, which are LINE anchors in Ruby, so `"A00\nDROP TABLE codes"` would pass |
 | Python | `re.fullmatch(pattern, s)`, or `re.compile(rf"\A(?:{pattern})\Z")` |
-| R | `grepl(paste0("^(", pattern, ")$"), x, perl = TRUE)` — `str_detect` alone is an unanchored search |
+| R, base | `grepl(paste0("^(", pattern, ")$"), x, perl = TRUE)` |
+| R, stringr | `str_detect(x, paste0("^(", pattern, ")$"))` — `str_detect` alone is an unanchored search.  stringr is ICU, not PCRE, and takes no `perl =` argument |
 | SQL / DuckDB | `regexp_full_match(code, pattern)` |
 
 To *find* codes inside free text rather than validate a known string, anchor on code boundaries instead of string ends — `(?<![0-9A-Za-z])(?:PATTERN)(?![0-9A-Za-z])`.  Shape alone is rarely enough for prose: a scanner usually also needs context (a parenthetical, or a lead-in such as "codes" or "classifiable to").  See the Principles in `CLAUDE.md`.
