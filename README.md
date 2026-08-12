@@ -23,6 +23,23 @@ Variants serve both without either winning.  The failure mode to guard against i
 
 Corollary for the two tables: `vocabulary_formats.tsv` answers *"does this look like a code of vocabulary X?"*, and `vocabulary_labels.tsv` answers *"what vocabulary is this label naming?"*.  Neither answers *"is this a real code?"* — that is a lookup against the concept table, and it belongs to the caller.
 
+## The patterns carry NO anchors — the caller supplies the boundary
+
+**Every `regexp` value matches a complete code and nothing more, but it is stored without `^`, `$`, `\A`, `\z` or `\b`.  Binding it to a boundary is the caller's job, and the caller must do it.**  Used bare, a pattern matches a code *inside* a longer string, so `I10 and some trailing prose` passes.
+
+This is deliberate, because the correct anchor differs by language and by job:
+
+| Language | Whole-string validation |
+| --- | --- |
+| Ruby | `/\A(?:#{pattern})\z/` — **not** `^…$`, which are LINE anchors in Ruby, so `"A00\nDROP TABLE codes"` would pass |
+| Python | `re.fullmatch(pattern, s)`, or `re.compile(rf"\A(?:{pattern})\Z")` |
+| R | `grepl(paste0("^(", pattern, ")$"), x, perl = TRUE)` — `str_detect` alone is an unanchored search |
+| SQL / DuckDB | `regexp_full_match(code, pattern)` |
+
+To *find* codes inside free text rather than validate a known string, anchor on code boundaries instead of string ends — `(?<![0-9A-Za-z])(?:PATTERN)(?![0-9A-Za-z])`.  Shape alone is rarely enough for prose: a scanner usually also needs context (a parenthetical, or a lead-in such as "codes" or "classifiable to").  See the Principles in `CLAUDE.md`.
+
+**Wrap the pattern in a non-capturing group when you anchor it.**  Several rows are alternations, and `\A` + `a|b` + `\z` binds the anchors to the first branch only.  Every row is a single self-contained expression so that `(?:…)` always works — keep it that way when adding rows.
+
 ## Skewed Towards Valid
 
 If a choice has to be made between a more restrictive or a more permissive regexp, we'll favor the more permissive.  The point of these regexps is to see if a code _could_ be possibly valid.  If the goal is to ensure that only known, valid codes are permitted, these are not the regular expressions to use.
