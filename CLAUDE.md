@@ -138,3 +138,4 @@ regexes to 34 rows covering the non-claims vocabularies; `vocabulary_formats-e5s
 ## Principles
 
 - A vocabulary's code format is ONE regexp that must match every code the vocabulary publishes, then be narrowed to admit as few non-codes as a plain regexp reasonably can — guarded by a test over the published set, because a miss is silent: the reference does not go wrong, it vanishes. — vfm-ges, 2026-08-12
+- Judge a format's false positives against ordinary PROSE, not just against sibling vocabularies — these regexps are used to FIND codes in text, so a shape that also matches "ABC", "ALL" or "Age" fails even when it excludes every neighbouring vocabulary. — vfm-311, 2026-08-12
