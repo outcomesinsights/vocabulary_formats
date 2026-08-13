@@ -32,11 +32,29 @@ Variants serve both without either winning. The failure mode is the **default qu
 mean "everything real"** — which is how `NDC` came to reject 26% of its own vocabulary (338,328 real
 9-digit codes) while nobody noticed the purpose had blurred. Decided in seed `vfm-k2n`, 2026-07-27.
 
-### 2. Keep the regexes PERMISSIVE
+### 2. COMPLETE first, then as NARROW as a plain regexp reasonably gets
 
-Skew toward valid: accept anything that *could* be a valid code, tolerate a few false positives,
-**never reject a real code**. False negatives are unacceptable. This is not a style preference — it
-is the repo's entire contract with its consumers.
+Skew toward valid: accept anything that *could* be a valid code, **never reject a real code**. False
+negatives are unacceptable — that is the repo's entire contract with its consumers, not a style
+preference.
+
+**But permissiveness is the FLOOR, not the goal.** The tie-break is an ORDERING, applied in order:
+
+- **COMPLETENESS** — never a false negative within the row's declared target. Absolute.
+- **NARROWNESS** — between two regexps that are both complete, take the narrower. Tolerate a false
+  positive only as far as staying complete requires; if a plain regexp excludes it for free, exclude
+  it, judged against ordinary prose and not only against sibling vocabularies.
+- **PERMISSIVENESS BREAKS TIES** — when narrowing would risk a real code, present or future, stay
+  wide.
+
+`ICD10CM` shows both halves, 2026-08-12. *Permissiveness:* positions 2-3 stay `\w`, which is why
+FY2026's `QA0` — the first category ever with a letter in position 2 — needed no edit here, while a
+consumer that had respelled the shape more strictly went blind to a whole chapter. *Narrowness:* that
+same row was still narrowed twice, for free — position 1 to a letter (the old shape accepted 16,100
+of 17,564 `ICD9CM` codes; `.DOTLESS` accepted 17,562, nearly the whole vocabulary) and position 2 to
+(digit | `QA`), dropping 426 ordinary word-tokens (`ABC`, `ALL`, `Age`). Both cost **zero in-target
+false negatives** over 100,035 published codes. "Favor the more permissive" would have argued against
+both.
 
 **Rule 1 SCOPES rule 2, it does not overturn it.** A false negative is judged against **the row's own
 declared target**: a 9-digit NDC failing the claims-default `NDC` row is *correct*; the same code
@@ -61,7 +79,9 @@ concept_codes before committing** (see Commands).
 
 Related: usage-specific strictness belongs in the CALLER, never here. A >=4-character floor for
 *scanning* free text is correct in a scanner (bare 3-char categories appear in ordinary disease
-prose) but would be a forbidden false negative here, since I10 is a legitimate code.
+prose) but would be a forbidden false negative here, since I10 is a legitimate code. Completeness is
+the line, not width: a narrowing that costs no real code belongs HERE, and one that would cost even a
+single real code belongs in the caller.
 
 ## Tech Stack
 
@@ -73,7 +93,7 @@ prose) but would be a forbidden false negative here, since I10 is a legitimate c
 
 ## Purpose
 
-Provides regular expressions that verify if medical terminology codes "look" valid without requiring database lookups. Favors permissive matching to avoid false negatives on new/valid codes. Useful for validating codes from claims data, vocabulary files, or user input.
+Provides regular expressions that verify if medical terminology codes "look" valid without requiring database lookups. Never rejects a real code — and past that floor, admits as few non-codes as a plain regexp reasonably can (rule 2). Useful for validating codes from claims data, vocabulary files, or user input.
 
 ## Key Entry Points
 

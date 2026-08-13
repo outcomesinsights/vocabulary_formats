@@ -43,15 +43,56 @@ To *find* codes inside free text rather than validate a known string, anchor on 
 
 **Wrap the pattern in a non-capturing group when you anchor it.**  Several rows are alternations, and `\A` + `a|b` + `\z` binds the anchors to the first branch only.  Every row is a single self-contained expression so that `(?:…)` always works — keep it that way when adding rows.
 
-## Skewed Towards Valid
+## Skewed Towards Valid — permissive is the FLOOR, not the goal
 
-If a choice has to be made between a more restrictive or a more permissive regexp, we'll favor the more permissive.  The point of these regexps is to see if a code _could_ be possibly valid.  If the goal is to ensure that only known, valid codes are permitted, these are not the regular expressions to use.
+The point of these regexps is to see if a code _could_ be possibly valid.  If the goal is to ensure
+that only known, valid codes are permitted, these are not the regular expressions to use.
 
-**False negatives are judged against the row's declared target, not against the whole vocabulary.**  A 9-digit NDC failing the claims-default `NDC` row is correct; the same code failing `NDC.COMPLETE` is a bug.  Within a row's stated target, a false negative is never acceptable.
+**The tie-break is an ORDERING, applied in this order:**
 
-If the regexps are too restrictive, they might disqualify future valid codes.  For example, ICD10CM recently introduced codes that start with U, particularly for the diagnosis of COVID-related symptoms.  There are regexps in the wild that would mark these new codes as invalid.  That kind of regexp is overly restrictive for our purposes.
+1. **COMPLETENESS — never a false negative within the row's declared target.**  Absolute.  A regexp
+   that rejects a code its row is meant to cover is wrong, and nothing about it redeems that.
+2. **NARROWNESS — between two regexps that are both complete, prefer the narrower one.**  Tolerate a
+   false positive only as far as staying complete requires: if a plain regexp excludes it for free,
+   exclude it.  Judge those false positives against ordinary *prose*, not only against sibling
+   vocabularies; these patterns are used to find codes in text.
+3. **PERMISSIVENESS BREAKS TIES.**  When narrowing would put a real code at risk — one published now,
+   or one plausibly published next year — stay wide.
 
-Basically, if the regexp yields a false negative, it's not an acceptable regexp.  If it yields a small number of false positives, we'll allow it.
+Completeness and the tie-break are what "we'll favor the more permissive" used to say here on its
+own.  Narrowness is what that summary left out, and widening a row that was already complete buys
+nothing.
+
+**False negatives are judged against the row's declared target, not against the whole vocabulary.**
+A 9-digit NDC failing the claims-default `NDC` row is correct; the same code failing `NDC.COMPLETE`
+is a bug.  Within a row's stated target, a false negative is never acceptable.
+
+### The worked example: `ICD10CM` cuts both ways
+
+**For permissiveness — too restrictive disqualifies codes that do not exist yet.**  ICD-10-CM
+introduced codes starting with `U`, particularly for COVID-related diagnoses, and regexps exist
+that mark those as invalid; that kind of regexp is overly restrictive for our purposes.  Positions
+2-3 of the row are deliberately still `\w` for the same reason: FY2026 introduced `QA0`, the first
+ICD-10-CM category ever to carry a letter in position 2, and the permissive tail is why this row
+needed no edit at all — while a consumer that had respelled the shape more strictly
+(`[A-Z][0-9][0-9A-Z]`) silently stopped seeing an entire chapter.
+
+**For narrowness — and yet that same row was narrowed twice on 2026-08-12, both times for free.**
+Position 1 must be a letter: the old `\w{3}(\.\w{1,4})?` accepted 16,100 of 17,564 `ICD9CM` codes as
+valid ICD-10-CM, and the `.DOTLESS` variant's `\w{3,7}` accepted 17,562 of them — nearly the whole
+ICD-9 vocabulary.  Position 2 is a digit or the literal `QA`: `\w` there also matched 426 ordinary
+word-tokens (`ABC`, `ALL`, `ARE`, `Age`, `Air`).  Both narrowings cost **zero in-target false
+negatives** across all 100,035 published ICD-10-CM codes; the single code either one costs, `NOD.X`,
+was retired in 2009 and is excluded in the open, with its evidence, in
+`checks/validation_targets.json`.
+
+"Favor the more permissive" would have argued against two changes that cost nothing and fixed a lot.
+That is the case for the ordering: completeness is absolute, narrowness is a duty, and permissiveness
+only breaks ties.
+
+Basically, if the regexp yields a false negative, it's not an acceptable regexp.  If it yields a
+small number of false positives, we'll allow the ones a plain regexp cannot remove without
+endangering rule 1.
 
 ## Tab Seperated Values (TSV) Format
 
