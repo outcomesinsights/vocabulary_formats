@@ -13,6 +13,9 @@
 
 python := "uv run --no-project --with duckdb python"
 
+# so `just prose --try 'X=\w{3}'` reaches the script intact instead of through the shell twice
+set positional-arguments := true
+
 # default: the gate that needs nothing
 default: lint
 
@@ -37,6 +40,21 @@ test:
     mkdir -p claude_stuff
     log="claude_stuff/false-negatives-$(date +%Y%m%d-%H%M%S).log"
     {{python}} checks/false_negatives.py 2>&1 | tee "$log"
+    rc=${PIPESTATUS[0]}
+    echo "log: $log" | tee -a "$log"
+    exit $rc
+
+# THE PROSE-ADVERSARY REPORT. What each row admits from ordinary running text, which is the
+# question the cross-vocabulary false-positive numbers cannot see (vocabulary_formats-wir). NOT a
+# gate: it never fails, because a row that admits half the dictionary may still be honest. Score a
+# candidate narrowing beside the row it would replace:
+#     just prose --try 'ICD10=[A-Za-z][0-9][0-9A-Za-z](\.\w{1,4})?'
+prose *ARGS:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    mkdir -p claude_stuff
+    log="claude_stuff/prose-$(date +%Y%m%d-%H%M%S).log"
+    {{python}} checks/prose.py "$@" 2>&1 | tee "$log"
     rc=${PIPESTATUS[0]}
     echo "log: $log" | tee -a "$log"
     exit $rc
