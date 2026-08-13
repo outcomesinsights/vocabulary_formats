@@ -5,3 +5,6 @@
 
 # Diagnostic logs from `just lint` / `just test` — local artifacts, not repo history
 claude_stuff/
+
+# Python bytecode from `just prose` importing the harness next door
+__pycache__/
