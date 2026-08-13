@@ -1,0 +1,335 @@
+{
+  "_what": "The DECLARED TARGET of every row in vocabulary_formats.tsv, as data the harness reads.",
+  "_why": "Rule 1 scopes rule 2: a false negative is judged against the row's OWN target, never the whole vocabulary. Until 2026-08-13 each row's target and its deliberate exclusions lived only as prose in the notes column, so nothing re-ran. checks/false_negatives.py reads this file; checks/lint.py checks that every row has exactly one entry here and no entry is an orphan.",
+  "_how_a_target_is_evaluated": [
+    "1. pull DISTINCT concept_code for concept_vocabulary_ids (+ concept_classes, + valid_only) from the named source",
+    "2. drop the exclusions (matched against the ORIGINAL concept_code, before any transform)",
+    "3. keep only codes fullmatching code_filter.pattern, if one is declared",
+    "4. apply transform, if one is declared",
+    "5. every surviving code MUST fullmatch \\A(?:regexp)\\z -- anything left over is an in-target false negative and fails the run"
+  ],
+  "_editing": "Adding a row to vocabulary_formats.tsv means adding its target here; lint fails otherwise. A new exclusion needs a 'why' naming the concept_id / invalid_reason / class that makes it not-a-code -- an exclusion without evidence is just a regexp that lost an argument.",
+
+  "sources": {
+    "athena": {
+      "kind": "csv",
+      "default_path": "/mnt/samba/data/ohdsi_vocabs/20260625/CONCEPT.csv",
+      "env": "VOCABULARY_FORMATS_ATHENA_CSV",
+      "what": "Stock OHDSI CONCEPT table as downloaded from Athena, tab-delimited. Covers every vocabulary OHDSI ships."
+    },
+    "oi": {
+      "kind": "duckdb",
+      "default_path": "/home/ryan/projects/outins/vocabulation/synpuf_test_data.duckdb",
+      "schema": "ohdsi_vocabs",
+      "env": "VOCABULARY_FORMATS_OI_DUCKDB",
+      "what": "vocabulation's build: the same Athena release with our supplemental vocabularies grafted on. The ONLY substrate that carries the OI-minted vocabularies (CPT4_HCPCS, ICD03_Morphology, ICD03_Topography) -- they are not in Athena, so rows targeting them cannot be scored against the CSV."
+    }
+  },
+
+  "targets": [
+    {
+      "vocabulary_id": "ICD9CM",
+      "source": "athena",
+      "concept_vocabulary_ids": ["ICD9CM"],
+      "exclusions": [
+        {
+          "codes": ["92", "sd", "XX0.00"],
+          "why": "Vocabulary defects, not codes. 92 = concept 44827111, invalid_reason D, a deleted row whose leading zero was stripped from 092. sd = concept 44825089, invalid_reason D, corrupt. XX0.00 = 'Not Applicable', OI-minted concept 100000089 (absent from Athena, present in the OI build)."
+        }
+      ]
+    },
+    {
+      "vocabulary_id": "ICD9CM.DOTLESS",
+      "source": "athena",
+      "concept_vocabulary_ids": ["ICD9CM"],
+      "transform": "strip_dots",
+      "exclusions": [
+        {
+          "codes": ["92", "sd", "XX0.00"],
+          "why": "Same three ICD9CM defect rows; see the ICD9CM target."
+        }
+      ]
+    },
+    {
+      "vocabulary_id": "ICD9Proc",
+      "source": "athena",
+      "concept_vocabulary_ids": ["ICD9Proc"]
+    },
+    {
+      "vocabulary_id": "ICD9Proc.DOTLESS",
+      "source": "athena",
+      "concept_vocabulary_ids": ["ICD9Proc"],
+      "transform": "strip_dots"
+    },
+    {
+      "vocabulary_id": "ICD10CM",
+      "source": "athena",
+      "concept_vocabulary_ids": ["ICD10CM"],
+      "exclusions": [
+        {
+          "codes": ["NOD.X"],
+          "why": "'No diagnosis', concept 35209512, invalid_reason D, retired 2009-12-31. Deliberately excluded when position 1 was narrowed to a letter on 2026-08-12 -- it is the single retired code that narrowing costs."
+        }
+      ]
+    },
+    {
+      "vocabulary_id": "ICD10CM.DOTLESS",
+      "source": "athena",
+      "concept_vocabulary_ids": ["ICD10CM"],
+      "transform": "strip_dots",
+      "exclusions": [
+        {
+          "codes": ["NOD.X"],
+          "why": "Same retired concept 35209512; see the ICD10CM target."
+        }
+      ]
+    },
+    {
+      "vocabulary_id": "ICD10",
+      "source": "athena",
+      "concept_vocabulary_ids": ["ICD10"],
+      "exclusions": [
+        {
+          "name_prefix": "Invalid ICD10 Concept",
+          "why": "351 placeholder rows named 'Invalid ICD10 Concept, do not use' whose concept_code is just the concept_id (e.g. 45532996). Not WHO ICD-10 codes."
+        }
+      ]
+    },
+    {
+      "vocabulary_id": "ICD10.DOTLESS",
+      "source": "athena",
+      "concept_vocabulary_ids": ["ICD10"],
+      "transform": "strip_dots",
+      "exclusions": [
+        {
+          "name_prefix": "Invalid ICD10 Concept",
+          "why": "Same 351 placeholders; see the ICD10 target."
+        }
+      ]
+    },
+    {
+      "vocabulary_id": "ICD10PCS",
+      "source": "athena",
+      "concept_vocabulary_ids": ["ICD10PCS"],
+      "exclusions": [
+        {
+          "codes": ["MTHU000001", "MTHU000002", "MTHU000003"],
+          "why": "UMLS GEM mapping-table nodes (concepts 2881422 / 2834829 / 2849590, class ICD10PCS Hierarchy, all invalid_reason D). Not PCS codes."
+        }
+      ]
+    },
+    {
+      "vocabulary_id": "HCPCS",
+      "source": "athena",
+      "concept_vocabulary_ids": ["HCPCS"],
+      "concept_classes": ["HCPCS"],
+      "exclusions": [
+        {
+          "codes": ["HCPC"],
+          "why": "'LONG DESCRIPTION (Deprecated)' -- a UMLS source marker carried in class HCPCS, not a billable code."
+        }
+      ],
+      "class_note": "Class HCPCS only. Class HCPCS Modifier belongs to .WITHMODIFIERS / HCPCS_MODIFIER; class HCPCS Class is the BETOS groupers (D1A, I1A, T1A), which are not HCPCS codes."
+    },
+    {
+      "vocabulary_id": "HCPCS.WITHMODIFIERS",
+      "source": "athena",
+      "concept_vocabulary_ids": ["HCPCS"],
+      "concept_classes": ["HCPCS", "HCPCS Modifier"],
+      "exclusions": [
+        {
+          "codes": ["HCPC"],
+          "why": "Same deprecated LONG DESCRIPTION marker; see the HCPCS target."
+        }
+      ]
+    },
+    {
+      "vocabulary_id": "HCPCS_MODIFIER",
+      "source": "athena",
+      "concept_vocabulary_ids": ["HCPCS"],
+      "concept_classes": ["HCPCS Modifier"],
+      "class_note": "There is no HCPCS_MODIFIER vocabulary_id in OMOP -- modifiers share the HCPCS vocabulary_id and are separated only by concept_class_id. The formats row exists so a caller can name the modifier form on its own."
+    },
+    {
+      "vocabulary_id": "CPT4",
+      "source": "athena",
+      "concept_vocabulary_ids": ["CPT4"],
+      "concept_classes": ["CPT4"],
+      "exclusions": [
+        {
+          "codes": ["V-SRC", "V-CPT", "V-HCPT", "V-CPTSP", "V-MTHCH", "V-CPT01SP", "V-CPT2003", "V-MTHCH03", "V-HCPT03"],
+          "why": "UMLS source markers ('Physicians' Current Procedural Terminology, 2003', 'HCPCS Version of CPT', ...) carried inside class CPT4. Not procedure codes. V-CPT and V-SRC are five characters, so they are the two five-char non-matches the CPT4_HCPCS notes call out."
+        },
+        {
+          "codes": ["1028555", "1028556", "1028557", "1028558", "1028559", "1028560", "1028561"],
+          "why": "'Global period 0 days / 10 days / 90 days / maternity / NA / carrier / other service' -- billing metadata whose concept_code is its own concept_id, carried inside class CPT4."
+        }
+      ],
+      "class_note": "Class CPT4 only. CPT4 Hierarchy are groupers, CPT4 Modifier belongs to .WITHMODIFIERS / CPT4_MODIFIER, and class Visit is not a CPT code."
+    },
+    {
+      "vocabulary_id": "CPT4.WITHMODIFIERS",
+      "source": "athena",
+      "concept_vocabulary_ids": ["CPT4"],
+      "concept_classes": ["CPT4", "CPT4 Modifier"],
+      "exclusions": [
+        {
+          "codes": ["V-SRC", "V-CPT", "V-HCPT", "V-CPTSP", "V-MTHCH", "V-CPT01SP", "V-CPT2003", "V-MTHCH03", "V-HCPT03"],
+          "why": "Same UMLS source markers; see the CPT4 target."
+        },
+        {
+          "codes": ["1028555", "1028556", "1028557", "1028558", "1028559", "1028560", "1028561"],
+          "why": "Same Global period metadata; see the CPT4 target."
+        }
+      ]
+    },
+    {
+      "vocabulary_id": "CPT4_MODIFIER",
+      "source": "athena",
+      "concept_vocabulary_ids": ["CPT4"],
+      "concept_classes": ["CPT4 Modifier"],
+      "class_note": "As with HCPCS_MODIFIER: OMOP stores modifiers under the CPT4 vocabulary_id, separated only by concept_class_id."
+    },
+    {
+      "vocabulary_id": "CPT4_HCPCS",
+      "source": "oi",
+      "concept_vocabulary_ids": ["CPT4_HCPCS"],
+      "concept_classes": ["CPT4", "HCPCS"],
+      "exclusions": [
+        {
+          "codes": ["V-SRC", "V-CPT", "V-HCPT", "V-CPTSP", "V-MTHCH", "V-CPT01SP", "V-CPT2003", "V-MTHCH03", "V-HCPT03", "HCPC"],
+          "why": "The CPT4 and HCPCS source markers, carried through the union; see the CPT4 and HCPCS targets."
+        },
+        {
+          "codes": ["1028555", "1028556", "1028557", "1028558", "1028559", "1028560", "1028561"],
+          "why": "Global period metadata carried through the union; see the CPT4 target."
+        }
+      ],
+      "class_note": "OI-minted (csc-171): CPT4 + HCPCS unioned and deduped. Billable classes only -- CPT4 Hierarchy (3,787), the 549 modifiers, HCPCS Class (106) and Visit (50) are excluded here exactly as they are in the source vocabularies."
+    },
+    {
+      "vocabulary_id": "CPT4_HCPCS.WITHMODIFIERS",
+      "source": "oi",
+      "concept_vocabulary_ids": ["CPT4_HCPCS"],
+      "concept_classes": ["CPT4", "HCPCS", "CPT4 Modifier", "HCPCS Modifier"],
+      "exclusions": [
+        {
+          "codes": ["V-SRC", "V-CPT", "V-HCPT", "V-CPTSP", "V-MTHCH", "V-CPT01SP", "V-CPT2003", "V-MTHCH03", "V-HCPT03", "HCPC"],
+          "why": "Same source markers; see the CPT4_HCPCS target."
+        },
+        {
+          "codes": ["1028555", "1028556", "1028557", "1028558", "1028559", "1028560", "1028561"],
+          "why": "Same Global period metadata; see the CPT4_HCPCS target."
+        }
+      ]
+    },
+    {
+      "vocabulary_id": "CPT4_HCPCS_MODIFIER",
+      "source": "oi",
+      "concept_vocabulary_ids": ["CPT4_HCPCS"],
+      "concept_classes": ["CPT4 Modifier", "HCPCS Modifier"],
+      "class_note": "The 549 modifier concepts inside CPT4_HCPCS: 385 HCPCS Modifier + 164 CPT4 Modifier."
+    },
+    {
+      "vocabulary_id": "NDC",
+      "source": "athena",
+      "concept_vocabulary_ids": ["NDC"],
+      "code_filter": {
+        "pattern": "[0-9]{11}",
+        "why": "CLAIMS DEFAULT (vfm-k2n): this row targets the 11-digit billing form only, so the 9-digit labeler+product codes are OUT of target and their non-match is correct, not a false negative. The 25 alphanumeric 11-character codes are NDC.ALPHANUM's target."
+      }
+    },
+    {
+      "vocabulary_id": "NDC.COMPLETE",
+      "source": "athena",
+      "concept_vocabulary_ids": ["NDC"],
+      "code_filter": {
+        "pattern": "[0-9]+",
+        "why": "The FULL vocabulary, both the 9- and 11-digit forms -- but numeric only. The 39 alphanumeric concept_codes are NDC.ALPHANUM's target (see vfm-8l5)."
+      }
+    },
+    {
+      "vocabulary_id": "NDC.ALPHANUM",
+      "source": "athena",
+      "concept_vocabulary_ids": ["NDC"],
+      "class_note": "No filter: every NDC concept_code, alphanumeric forms included. This is the widest of the three NDC rows and the only one with no in-target exclusions."
+    },
+    {
+      "vocabulary_id": "RxNorm",
+      "source": "athena",
+      "concept_vocabulary_ids": ["RxNorm"]
+    },
+    {
+      "vocabulary_id": "RxNorm Extension",
+      "source": "athena",
+      "concept_vocabulary_ids": ["RxNorm Extension"],
+      "class_note": "The vocabulary_id contains a SPACE. That is not a typo here or in the TSV."
+    },
+    {
+      "vocabulary_id": "ATC",
+      "source": "athena",
+      "concept_vocabulary_ids": ["ATC"],
+      "class_note": "All five ATC levels. Not the separate EphMRA ATC vocabulary."
+    },
+    {
+      "vocabulary_id": "SNOMED",
+      "source": "athena",
+      "concept_vocabulary_ids": ["SNOMED"],
+      "valid_only": true,
+      "class_note": "VALID concepts only (vfm-27p). Every UUID-shaped SNOMED concept_code is invalid (invalid_reason U or D, zero valid), so a numeric-only default rejects nothing valid. Retired concepts are SNOMED.WITHRETIRED's target."
+    },
+    {
+      "vocabulary_id": "SNOMED.WITHRETIRED",
+      "source": "athena",
+      "concept_vocabulary_ids": ["SNOMED"],
+      "class_note": "Every SNOMED concept_code, valid and retired -- this row exists to cover the UUID form that retired/withdrawn concepts carry."
+    },
+    {
+      "vocabulary_id": "DRG",
+      "source": "athena",
+      "concept_vocabulary_ids": ["DRG"]
+    },
+    {
+      "vocabulary_id": "DRG.UNPADDED",
+      "source": "athena",
+      "concept_vocabulary_ids": ["DRG"],
+      "transform": "strip_leading_zeros"
+    },
+    {
+      "vocabulary_id": "ICDO3",
+      "source": "athena",
+      "concept_vocabulary_ids": ["ICDO3"],
+      "class_note": "Stock OHDSI ICD-O-3. Includes concept 36402927, whose concept_code '9342/3' carries a TRAILING SPACE (an upstream defect the row's leading/trailing \\s* deliberately accommodates rather than excludes)."
+    },
+    {
+      "vocabulary_id": "ICD03_Morphology",
+      "source": "oi",
+      "concept_vocabulary_ids": ["ICD03_Morphology"],
+      "class_note": "OI supplemental morphology-only split. ICD03 with a DIGIT ZERO -- a different vocabulary from stock ICDO3 with a letter O."
+    },
+    {
+      "vocabulary_id": "ICD03_Morphology.NOBEHAVIOR",
+      "source": "oi",
+      "concept_vocabulary_ids": ["ICD03_Morphology"],
+      "transform": "strip_behavior_suffix",
+      "class_note": "Every stored morphology code with its /behavior suffix removed -- the form papers actually print (8140 for 8140/3)."
+    },
+    {
+      "vocabulary_id": "ICD03_Topography",
+      "source": "oi",
+      "concept_vocabulary_ids": ["ICD03_Topography"]
+    },
+    {
+      "vocabulary_id": "ICD03_Topography.DOTLESS",
+      "source": "oi",
+      "concept_vocabulary_ids": ["ICD03_Topography"],
+      "transform": "strip_dots"
+    },
+    {
+      "vocabulary_id": "EDI",
+      "source": "athena",
+      "concept_vocabulary_ids": ["EDI"],
+      "class_note": "Korean HIRA EDI, all classes."
+    }
+  ]
+}
