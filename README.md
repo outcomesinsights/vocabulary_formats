@@ -175,6 +175,47 @@ A row's target is its *own*, never the whole vocabulary: the 9-digit NDCs the cl
 row rejects are out of target and correct, while the same codes failing `NDC.COMPLETE` would be a
 bug.  Changing what a row is held to means editing that declaration, in the open, next to the reason.
 
+## What "as narrow as a plain regexp reasonably gets" is measured against
+
+**Ordinary prose, not just sibling vocabularies.**  `just prose` scores every row against real
+running text and reports what it admits — how many distinct word-tokens match, and how many of those
+are ordinary English words rather than code-shaped strings.  Two corpora, both optional, both
+skipped with a message when absent: the FY2026 **ICD-10-CM tabular** (21,248 distinct tokens from
+25,160 notes and 46,881 code descriptions — clinical prose) and the litmine pilot's **20 PubMed
+Central papers** (17,570 tokens — literature prose, where a loose row costs the most).
+
+This is a **report, not a gate**.  It never fails a run, because a high number can be perfectly
+honest: every two-character string really is a valid HCPCS modifier.  When a row cannot be narrowed,
+the answer is to **say so in its `notes`**, not to tighten it into a false negative.
+
+The 2026-08-13 sweep (`vocabulary_formats-wir`) scored all 34 rows and narrowed ten of them, each
+with its own before/after pair and each re-validated at **0 in-target false negatives**:
+
+| Row | Ordinary words admitted (tabular corpus), before → after | What the evidence was |
+| --- | --- | --- |
+| `EDI` | 7,637 → **0** | lengths are exactly 5/8/9 and positions 4-5 are digits in all 442,551 codes |
+| `ICD10.DOTLESS` | 5,565 → **15** | `\w{3,7}` was most of the dictionary; codes are letter+digit+alnum |
+| `ICD10PCS` | 5,708 → **2,323** | the PCS spec bars `I` and `O` from every axis; 197,095 codes agree |
+| `NDC.ALPHANUM` | 2,899 → **0** | all 1,302,950 codes begin with the 5-digit FDA labeler segment |
+| `CPT4_HCPCS.WITHMODIFIERS` | 1,269 → **111** | narrowed on the code branch; the `\w{2}` branch is what remains |
+| `CPT4_HCPCS` | 1,158 → **0** | both parents already require digits in positions 2-4 |
+| `ICD10` | 439 → **15** | plus the chapter branch enumerated to the 22 real WHO numerals |
+| `ATC` | 47 → **27** | level 1 is a closed set of 14 anatomical main groups |
+| `HCPCS`, `HCPCS.WITHMODIFIERS` | 0 → 0, 111 → 111 | narrowed for free (all codes are letter + 4 digits), but neither admitted English words to begin with |
+
+**Cross-vocabulary numbers alone would have argued against most of this.**  Narrowing `ICD10CM`'s
+position 2 removed *zero* cross-vocabulary false positives and 426 ordinary word-tokens; the sweep
+exists because that first number said "do not bother" and was wrong.
+
+**Some rows cannot carry their own weight in a text scan, and their `notes` now say so.**
+`HCPCS_MODIFIER`, `CPT4_MODIFIER`, `CPT4_HCPCS_MODIFIER` and every `.WITHMODIFIERS` row admit
+ordinary two-letter words (*of, in, to, at, is, be*) because that is what a modifier looks like.
+`DRG`, `RxNorm`, `ICD03_Morphology.NOBEHAVIOR` and the `.DOTLESS`/`.UNPADDED` rows admit bare
+numbers — including years — for the same reason.  `ICD10PCS` remains the loosest row in the table
+even after narrowing.  Those rows need context from the caller (a field that already holds a code, a
+parenthetical, a lead-in), and recording that is worth more than a narrowing that would cost a real
+code.
+
 ## Commands
 
 ```bash
@@ -183,13 +224,21 @@ just lint    # THE GATE. Structural: regexps compile, no anchors, no top-level a
              # No database, no network, seconds — run it before every commit.
 just test    # The false-negative harness above. Needs an OHDSI concept table and skips
              # cleanly, with a message, when there is not one on the machine.
+just prose   # The prose-adversary report. What each row admits from real running text.
+             # Never fails; score a candidate beside the row it would replace with
+             #   just prose --try 'ICD10=[A-Za-z][0-9][0-9A-Za-z](\.\w{1,4})?'
 make all     # Regenerate both parquets after editing a TSV (`just parquet` calls this).
 ```
 
-Both commands tee a timestamped log into `claude_stuff/` and print its path.  `just test` reads its
+All three tee a timestamped log into `claude_stuff/` and print its path.  `just test` reads its
 substrate from `VOCABULARY_FORMATS_ATHENA_CSV` (a stock Athena `CONCEPT.csv`) and
 `VOCABULARY_FORMATS_OI_DUCKDB` (a `vocabulation` build, the only place the OI-minted vocabularies
-`CPT4_HCPCS` and `ICD03_*` exist); defaults for both are in the declaration file.
+`CPT4_HCPCS` and `ICD03_*` exist); `just prose` reads its corpora from
+`VOCABULARY_FORMATS_TABULAR_DUCKDB` and `VOCABULARY_FORMATS_PAPERS_DIR`.  Defaults for all four are
+in the scripts that use them.
+
+**Narrowing a row means running both.**  `just prose` says what the change bought; `just test` says
+what it cost.  A narrowing that costs even one in-target code is a bug, whatever it bought.
 
 ## Contributing
 

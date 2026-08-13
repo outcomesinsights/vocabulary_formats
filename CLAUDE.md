@@ -7,7 +7,7 @@
 ## Status
 
 - **Active** — a member of the `codesets` habitat; tracked with `bd` (`vocabulary_formats-`) and `seeds` (`vfm-`).
-- Last meaningful work: 2026-07-27
+- Last meaningful work: 2026-08-13
 
 ## THE TWO RULES THAT GOVERN EVERY EDIT
 
@@ -55,6 +55,16 @@ of 17,564 `ICD9CM` codes; `.DOTLESS` accepted 17,562, nearly the whole vocabular
 (digit | `QA`), dropping 426 ordinary word-tokens (`ABC`, `ALL`, `Age`). Both cost **zero in-target
 false negatives** over 100,035 published codes. "Favor the more permissive" would have argued against
 both.
+
+**The 2026-08-13 sweep (`vocabulary_formats-wir`) applied that ordering to every remaining row**,
+narrowing ten — each measured on its own before/after pair, all still at 0 in-target false negatives
+over 8,662,422 codes. `EDI` went from admitting 7,637 ordinary words to **0** (every one of its
+442,551 codes is 5, 8 or 9 characters with digits in positions 4-5), `ICD10.DOTLESS` 5,565 → 15,
+`NDC.ALPHANUM` 2,899 → 0, `CPT4_HCPCS` 1,158 → 0, `ICD10PCS` 5,708 → 2,323 (the spec bars `I` and
+`O`). Just as load-bearing is what was **not** narrowed: `\w{2}` really is the shape of a modifier
+and `\d{3}` really is the shape of a DRG, so those rows now carry a note saying they cannot carry
+their own weight in a text scan — a false negative would have been the worse trade. `just prose` is
+the instrument; per-row numbers are in the `notes` column, the summary table is in `README.md`.
 
 **Rule 1 SCOPES rule 2, it does not overturn it.** A false negative is judged against **the row's own
 declared target**: a 9-digit NDC failing the claims-default `NDC` row is *correct*; the same code
@@ -105,6 +115,7 @@ Provides regular expressions that verify if medical terminology codes "look" val
 ```bash
 just lint    # THE GATE — structural, no database, seconds. Run before every commit.
 just test    # the false-negative harness; skips cleanly when the machine has no concept table
+just prose   # what each row admits from real running text; a REPORT, never a gate
 make all     # regenerate both parquets after editing a TSV (just lint checks that you did)
 ```
 
@@ -121,6 +132,14 @@ a stock Athena `CONCEPT.csv` and a `vocabulation` build (schema `ohdsi_vocabs`, 
 the only place the OI-minted `CPT4_HCPCS` / `ICD03_*` exist); override with
 `VOCABULARY_FORMATS_ATHENA_CSV` / `VOCABULARY_FORMATS_OI_DUCKDB`. Editing a regexp means re-running
 it; adding a row means declaring its target, or lint fails.
+
+**`just prose`** answers the other half: not "does this row reject a real code?" but "what ELSE does
+it accept?", scored against real running text — the FY2026 ICD-10-CM tabular (21,248 tokens) and the
+litmine pilot's 20 papers (17,570). It is a **report, not a gate**: a row that admits half the
+dictionary may be honest, and the right answer is then a `notes` entry saying the row cannot carry
+its own weight, not a narrowing that costs a real code. `--try 'LABEL=REGEXP'` scores a candidate
+beside the row it would replace, which is how a before/after pair is produced. **Narrowing a row
+means running both**: `just prose` says what the change bought, `just test` says what it cost.
 
 Gotcha: ICD vocabularies are NON-standard in OMOP, so `standard_concept` is NULL — never filter
 `standard_concept='S'` for them or you get zero rows.
