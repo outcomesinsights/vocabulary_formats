@@ -65,9 +65,11 @@ prose) but would be a forbidden false negative here, since I10 is a legitimate c
 
 ## Tech Stack
 
-- Language: Data files only (TSV/Parquet)
-- Framework: None
-- Key dependencies: duckdb (for TSV to Parquet conversion via Makefile)
+- Language: the PUBLISHED artifacts are data only (TSV/Parquet) — nothing a consumer loads is code.
+  `checks/` holds the gate (Python), which no consumer imports; the tables stay polyglot.
+- Framework: none. `justfile` is the front door, `Makefile` still owns TSV -> parquet.
+- Key dependencies: duckdb only, and never installed — `uv run --no-project --with duckdb`, the same
+  way icd10cm and ohdsi_supplemental_vocabs do it. No pyproject, no lockfile, nothing to maintain.
 
 ## Purpose
 
@@ -81,30 +83,33 @@ Provides regular expressions that verify if medical terminology codes "look" val
 ## Commands
 
 ```bash
-# Generate parquet file from TSV (always run after editing the TSV)
-make all
+just lint    # THE GATE — structural, no database, seconds. Run before every commit.
+just test    # the false-negative harness; skips cleanly when the machine has no concept table
+make all     # regenerate both parquets after editing a TSV (just lint checks that you did)
 ```
 
-Validate a regex change against the real vocabulary before committing — the June-2026 Athena build
-is on disk at `~/projects/outins/vocabulation/synpuf_test_data.duckdb`, schema `ohdsi_vocabs`
-(**not** `main`). Expect zero false negatives:
+**`just lint`** enforces what nothing else did: every regexp compiles, **no anchors** and **no
+top-level alternation** in the regexp column (both invariants were measured once and then protected
+only by memory), unique keys, parquet in sync with the TSV, and every row's validation target
+declared. It self-tests its own scanner against hand-built patterns first, because the code
+enforcing those two rules can be silently wrong like any other.
 
-```python
-# uv run --with duckdb python
-import duckdb, re
-con = duckdb.connect('/home/ryan/projects/outins/vocabulation/synpuf_test_data.duckdb', read_only=True)
-codes = [r[0] for r in con.execute(
-    "SELECT concept_code FROM ohdsi_vocabs.concept WHERE vocabulary_id='ICD10CM'").fetchall()]
-rx = re.compile(r'^\w{3}(\.\w{1,4})?$')
-print(len([c for c in codes if not rx.match(c)]), "false negatives of", len(codes))
-```
+**`just test`** replaces the hand-run snippet this section used to carry. It scores every row against
+its OWN declared target — `checks/validation_targets.json`, where each target and every deliberate
+exclusion lives as data with its evidence — and fails on any in-target false negative. Substrates are
+a stock Athena `CONCEPT.csv` and a `vocabulation` build (schema `ohdsi_vocabs`, **not** `main`, and
+the only place the OI-minted `CPT4_HCPCS` / `ICD03_*` exist); override with
+`VOCABULARY_FORMATS_ATHENA_CSV` / `VOCABULARY_FORMATS_OI_DUCKDB`. Editing a regexp means re-running
+it; adding a row means declaring its target, or lint fails.
 
 Gotcha: ICD vocabularies are NON-standard in OMOP, so `standard_concept` is NULL — never filter
 `standard_concept='S'` for them or you get zero rows.
 
 ## Relationships
 
-- **Depends on**: None (data only — deliberately no Python here, so it stays polyglot)
+- **Depends on**: None. The published tables carry no code and no runtime — a Ruby or R consumer
+  reads them as-is. `checks/` is Python because the gate has to run somewhere; keep it out of what
+  ships.
 - **Feeds into**: `codesistant` (the shared Python producer lib that reads both tables),
   `code_collector` and `litmine` (producers), `code_set_catalog` (whose `docs/ingest-formats.md`
   cites it). Because several repos depend on it, growing it is cheap and welcome — but a regression

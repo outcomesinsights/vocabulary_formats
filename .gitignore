@@ -2,3 +2,6 @@
 # Dolt database files (added by bd init)
 .dolt/
 *.db
+
+# Diagnostic logs from `just lint` / `just test` — local artifacts, not repo history
+claude_stuff/

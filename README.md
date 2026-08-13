@@ -116,11 +116,39 @@ Every regexp here is validated against the real `concept_code` values in an OHDS
 ships.  A handful of vocabularies also contain rows that are *not codes*: UMLS source markers
 (`V-CPT`, `V-SRC`), OMOP metadata (`Global period 90 days`), placeholder rows whose `concept_code` is
 just the `concept_id` (`45532996`, named "Invalid ICD10 Concept, do not use"), and upstream defects.
-Those are deliberately **not** matched, and each row's `notes` enumerates exactly what it excludes and
-why — so an exclusion is always a documented decision, never a silent miss.
+Those are deliberately **not** matched — an exclusion is always a documented decision, never a silent
+miss.
 
 Classification tiers are excluded the same way and for the same reason: `CPT4 Hierarchy` groupers and
 `HCPCS Class` (BETOS) categories are not billable codes.
+
+**That validation re-runs — it is not a claim in the `notes` column.**  `checks/validation_targets.json`
+declares as data what each row is held to: which `vocabulary_id`s and `concept_class_id`s make up its
+target, whether retired concepts count, any code transform (`.DOTLESS`, `.UNPADDED`, `.NOBEHAVIOR`),
+and every deliberate exclusion **with the evidence** — `concept_id`, `invalid_reason`,
+`concept_class_id` — that makes it not-a-code.  `just test` pulls each target out of the concept
+table and requires every code in it to match that row's regexp, bound the way a caller binds it.  As
+of 2026-08-13 all 34 rows score **0 false negatives over 8,662,422 codes**.
+
+A row's target is its *own*, never the whole vocabulary: the 9-digit NDCs the claims-default `NDC`
+row rejects are out of target and correct, while the same codes failing `NDC.COMPLETE` would be a
+bug.  Changing what a row is held to means editing that declaration, in the open, next to the reason.
+
+## Commands
+
+```bash
+just lint    # THE GATE. Structural: regexps compile, no anchors, no top-level alternation,
+             # unique keys, parquet in sync with the TSV, every row's target declared.
+             # No database, no network, seconds — run it before every commit.
+just test    # The false-negative harness above. Needs an OHDSI concept table and skips
+             # cleanly, with a message, when there is not one on the machine.
+make all     # Regenerate both parquets after editing a TSV (`just parquet` calls this).
+```
+
+Both commands tee a timestamped log into `claude_stuff/` and print its path.  `just test` reads its
+substrate from `VOCABULARY_FORMATS_ATHENA_CSV` (a stock Athena `CONCEPT.csv`) and
+`VOCABULARY_FORMATS_OI_DUCKDB` (a `vocabulation` build, the only place the OI-minted vocabularies
+`CPT4_HCPCS` and `ICD03_*` exist); defaults for both are in the declaration file.
 
 ## Contributing
 
