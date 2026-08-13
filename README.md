@@ -8,6 +8,77 @@ In dealing with various medical terminologies, there are occasions when we need 
 
 Sometimes it's easier to see if a code "looks" like a valid code, hence these regexps.  The goal is to provide a set of regexps that verify if a code from a given terminology "looks" like the kind of code we expect.
 
+## The published interface — what you may fetch, and what you may rely on
+
+**Four files are the interface.  Everything else in this repository is internal.**
+
+| Published artifact | Answers |
+| --- | --- |
+| `vocabulary_formats.tsv`, `vocabulary_formats.parquet` | *does this string look like a code of vocabulary X?* — 34 rows |
+| `vocabulary_labels.tsv`, `vocabulary_labels.parquet` | *a document called its vocabulary X — which `vocabulary_id` is that?* — 22 rows |
+
+They sit at the repository root and keep those names.  Each `.parquet` is generated from its `.tsv`
+by `make all` and carries the same rows and the same columns, so take whichever your consumer reads
+more cheaply; `just lint` fails if the two ever drift.
+
+**`checks/` is INTERNAL** — the lint gate, the false-negative harness, the prose report, and
+`checks/validation_targets.json` — and so are the `justfile` and the `Makefile`.  Read them freely
+(the JSON is the evidence behind every guarantee below, declared as data), but do not build against
+them: they are the machinery that keeps the tables honest, not part of what ships.  No consumer
+imports them, which is exactly what lets the tables stay polyglot, and their shape may change
+without notice.
+
+### Fetching it
+
+The repository is public, so a consumer can read a file straight from GitHub:
+
+```
+https://raw.githubusercontent.com/outcomesinsights/vocabulary_formats/<ref>/vocabulary_formats.tsv
+```
+
+`<ref>` is a branch or a commit SHA, and that choice is the whole story:
+
+- **`main` is the tip, and it moves.**  Rows get added and regexps get narrowed — ten of them on
+  2026-08-13 alone.  A narrowing never costs a real code (see below), but it does change what
+  *else* the pattern admits, and nothing tells you it happened.
+- **A commit SHA is immutable**, and it is the only reproducible pin available here: this repo has
+  no tags and no releases.  Pin a SHA and re-point it deliberately.
+
+Vendoring a copy is a legitimate third option — both tables are small and the licence is MIT.  Pin
+a SHA or vendor; either way the version you are on is explicit.  Fetching `main` is the one choice
+that hands you drift you cannot see.
+
+### What you may rely on
+
+- **The four names and paths.**  When an artifact is retired it is recorded under *Retired
+  artifacts* below, with the commit and the date, instead of simply vanishing.
+- **`regexp` carries no anchors and no top-level alternation**, so `\A(?:pattern)\z` — or your
+  language's equivalent, in the table two sections down — is always safe to build.  `just lint`
+  enforces both.
+- **No false negative inside a row's declared target.**  Every row is scored against the real
+  `concept_code` values it claims to cover, and every deliberate exclusion is named with its
+  evidence in `checks/validation_targets.json`.  `just test` enforces it.
+- **Unique keys**: `vocabulary_id` in `vocabulary_formats`, `label` in `vocabulary_labels`.
+- **A blank `vocabulary_id` in `vocabulary_labels` is load-bearing**, not missing data — it means
+  the label resolves to nothing in our substrate, and consumers gate on it.
+
+### What changes under you
+
+- **Rows are added** to both tables, and a `regexp` may be **narrowed**: still complete for its
+  declared target, but admitting fewer non-codes than the version you last read.
+- **Columns may be added.**  Read columns by NAME, never by position.
+- **`source` and `notes` are prose for humans.**  They carry per-row measurements and reasons; do
+  not parse them.
+
+### Retired artifacts
+
+- **`vocabulary_formats.csv` — retired 2024-06-21**, commit `446f5cb`, replaced by
+  `vocabulary_formats.tsv` (tabs, so a regexp containing a comma needs no quoting).  There is no
+  redirect, the raw URL 404s, and it is not coming back — ruled 2026-08-13.
+  **Switching a consumer off that URL is not a one-line change:** the CSV's patterns were anchored
+  with `^…$` and today's patterns are bare, so swap the URL *and* bind the boundary in the same
+  change, or the matching silently widens.
+
 ## What the Default Row Targets: Claims-Observable Codes
 
 **The primary goal is to recognise codes we would expect to see in claims data — mostly billable.**  For each vocabulary, the DEFAULT row targets that.  Anything broader — the full vocabulary, retired concepts, alternate encodings — belongs in a **named variant**, never in the default.

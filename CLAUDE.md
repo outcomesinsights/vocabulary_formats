@@ -107,8 +107,17 @@ Provides regular expressions that verify if medical terminology codes "look" val
 
 ## Key Entry Points
 
-- `vocabulary_formats.tsv` - Primary data file with regexps (human-editable)
-- `vocabulary_formats.parquet` - Generated Parquet format for programmatic use
+**The published interface is FOUR files and nothing else**: `vocabulary_formats.tsv`/`.parquet` (the
+regexps, human-editable TSV) and `vocabulary_labels.tsv`/`.parquet` (the label registry, same shape).
+`checks/`, the `justfile` and the `Makefile` are internal machinery — no consumer imports them, which
+is what keeps the tables polyglot. `README.md` states this for consumers, with what to pin to (a
+commit SHA; there are no tags) and what may change under them.
+
+- `vocabulary_formats.csv` — **RETIRED** 2024-06-21 (`446f5cb`), replaced by the TSV; ruled
+  2026-08-13 that it stays retired. The raw URL 404s. A consumer moving off it must bind a boundary
+  in the same change: the CSV's patterns were anchored `^…$`, today's are bare, so a bare URL swap
+  silently widens the match. Retiring anything else means a note in that README section — its
+  absence is what let this break go unsignalled for two years.
 
 ## Commands
 
