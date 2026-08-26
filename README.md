@@ -314,3 +314,54 @@ what it cost.  A narrowing that costs even one in-target code is a bug, whatever
 ## Contributing
 
 Contributions are welcome!
+
+## The `context` and `use` columns
+
+Added 2026-08-26 (`vocabulary_formats-5i7`). Both are CLOSED SETS — a value outside
+them is a bug, not an extension. They exist so a consumer can **ask** the table a
+question it previously had to **measure**: `code_collector` bound all 37 rows over
+2,020,962 characters of real article text to discover which were usable as detectors,
+and the next consumer would have repeated that.
+
+### `context` — what data must this row survive?
+
+| value | meaning |
+|---|---|
+| `claims` | administrative claims. May print forms the concept table never contains — `DRG.UNPADDED` is `\d{1,3}` because claims report `12` for `012`. |
+| `literature` | published papers. Also prints forms no concept_code contains — `NDC.PUBLISHED` exists for hyphenated `0002-7510-01`. |
+| `vocabulary` | the OHDSI concept table itself, canonical forms only. `ICD10PCS`'s `{1,7}` is right here because a 3-character hierarchy parent IS a concept_code. |
+| `unstated` | nobody has said. **Not a synonym for "any"** — it means the question has not been answered for this row. |
+
+⚠️ **Measuring a row against every concept_code is necessary and NOT sufficient.**
+The vocabulary holds canonical forms; the wild holds presentations of them. `\d{1,3}`
+looked pointlessly wide against a concept table storing padded DRG codes, and
+narrowing it would have silently dropped real claims data. Only a stated `context`
+catches that.
+
+⚠️ 28 of 37 rows are `unstated`, and they were left that way deliberately. An invented
+context is worse than an admitted gap — it would read as knowledge.
+
+### `use` — validator, detector, or both?
+
+| value | meaning |
+|---|---|
+| `validator` | safe with `fullmatch` on a string you already have. **Every row is at least this.** |
+| `validator,detector` | also safe bound with `\b` and scanned over prose. |
+
+Assigned by MEASUREMENT, not judgement: a row is `detector` if it matched fewer than
+**2 per 10k characters** over the corpus above. The gap in the data is wide — the
+cleanest flooding row sits at 17.5 and the noisiest detector-safe row at 1.8 — so the
+threshold is not doing delicate work.
+
+**A validator and a detector want opposite things**, which is why one row rarely
+serves both when a vocabulary is hierarchical. `ICD10PCS`'s `{1,7}` is correct as a
+validator and matched 852.7 per 10k as a detector; `CPT4.WITHMODIFIERS`' `|\w{2}`
+alternative is correct (those 686 two-character modifiers are real codes) and matched
+340.5. Both got detector-only siblings — `ICD10PCS.BILLABLE`, `CPT4_HCPCS.CODEONLY` —
+rather than having their defaults narrowed.
+
+**Validator-only is a legitimate permanent answer.** Every vocabulary with a hierarchy
+has short codes at the top of it — `A` in ATC, `79` in CPT, `250` in ICD-9 — and under
+a no-false-negative rule those cannot be dropped, so they cannot be detected. A
+consumer needing them must key on the document naming the vocabulary, not on shape.
+
