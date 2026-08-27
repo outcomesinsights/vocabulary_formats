@@ -29,7 +29,7 @@ LABELS = ROOT / "vocabulary_labels.tsv"
 TARGETS = Path(__file__).resolve().parent / "validation_targets.json"
 
 TABLES = {
-    FORMATS: ["vocabulary_id", "regexp", "source", "notes"],
+    FORMATS: ["vocabulary_id", "regexp", "context", "use", "source", "notes"],
     LABELS: ["label", "vocabulary_id", "status", "source", "notes"],
 }
 
