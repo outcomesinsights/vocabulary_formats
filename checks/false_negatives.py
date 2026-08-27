@@ -38,6 +38,10 @@ TRANSFORMS = {
     "strip_dots": lambda code: code.replace(".", ""),
     "strip_leading_zeros": lambda code: code.lstrip("0") or "0",
     "strip_behavior_suffix": lambda code: re.sub(r"/\d\Z", "", code),
+    # An 11-digit NDC concept_code in the LABEL form papers and drug labels print:
+    # labeler(5)-product(4)-package(2). The three 10-digit configurations NDC.PUBLISHED also
+    # admits are NOT derivable from a concept_code -- see that row's target for why.
+    "hyphenate_ndc_5_4_2": lambda code: f"{code[:5]}-{code[5:9]}-{code[9:]}",
 }
 
 

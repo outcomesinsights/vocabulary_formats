@@ -74,7 +74,12 @@ KNOWN_TARGET_KEYS = {
     "exclusions",
     "class_note",
 }
-KNOWN_TRANSFORMS = {"strip_dots", "strip_leading_zeros", "strip_behavior_suffix"}
+KNOWN_TRANSFORMS = {
+    "strip_dots",
+    "strip_leading_zeros",
+    "strip_behavior_suffix",
+    "hyphenate_ndc_5_4_2",
+}
 
 failures = []
 

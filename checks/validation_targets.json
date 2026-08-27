@@ -119,6 +119,17 @@
       ]
     },
     {
+      "vocabulary_id": "ICD10PCS.BILLABLE",
+      "source": "athena",
+      "concept_vocabulary_ids": [
+        "ICD10PCS"
+      ],
+      "code_filter": {
+        "pattern": ".{7}",
+        "why": "DETECTOR sibling (vocabulary_formats-wsa, seed vfm-6x1): this row targets the BILLABLE 7-character codes ONLY, so the 1- to 6-character hierarchy parents are out of target and their non-match is correct, not a false negative -- scanning prose is what the row exists for and the default ICD10PCS row is what covers the parents. Measured 2026-08-27 against the 20260625 release: 82,327 of 197,098 concept_codes are 7 characters, 0 false negatives. The filter is LENGTH, not concept_class_id, because 82,327 is the figure the row's notes record and the class split does not reproduce it: 82,292 are class ICD10PCS and a further 35 are class ICD10PCS Hierarchy yet still full-length 7-character codes. It also removes MTHU000001/2/3 without a separate exclusion -- they are 10 characters -- so the parent row's exclusion list is deliberately not repeated here."
+      }
+    },
+    {
       "vocabulary_id": "HCPCS",
       "source": "athena",
       "concept_vocabulary_ids": ["HCPCS"],
@@ -208,6 +219,50 @@
       "class_note": "OI-minted (csc-171): CPT4 + HCPCS unioned and deduped. Billable classes only -- CPT4 Hierarchy (3,787), the 549 modifiers, HCPCS Class (106) and Visit (50) are excluded here exactly as they are in the source vocabularies."
     },
     {
+      "vocabulary_id": "CPT4_HCPCS.CODEONLY",
+      "source": "oi",
+      "concept_vocabulary_ids": [
+        "CPT4_HCPCS"
+      ],
+      "concept_classes": [
+        "CPT4",
+        "HCPCS"
+      ],
+      "code_filter": {
+        "pattern": ".{5}",
+        "why": "DETECTOR sibling (vocabulary_formats-qa5, seed vfm-6x1): CODES ONLY, and only the 5-character ones. Two groups are deliberately out of target. (1) MODIFIERS: they are 2 characters, they are reported in a separate column in claims data, and no pattern makes them detectable in prose (Ryan, 2026-08-26) -- CPT4_HCPCS.WITHMODIFIERS is where they are scored. (2) The 7-character CPT chapter codes, out of scope per Ryan, 2026-08-26: 'we are not concerned with CPT chapter codes'. The length filter also drops the one 4-character HCPCS code and the 14 CPT4 codes of 6, 8 and 9 characters, every one of which is an OHDSI-internal marker already named in the exclusions below. Measured 2026-08-27 against the OI build: 25,848 in-target codes, 0 false negatives."
+      },
+      "exclusions": [
+        {
+          "codes": [
+            "V-SRC",
+            "V-CPT",
+            "V-HCPT",
+            "V-CPTSP",
+            "V-MTHCH",
+            "V-CPT01SP",
+            "V-CPT2003",
+            "V-MTHCH03",
+            "V-HCPT03",
+            "HCPC"
+          ],
+          "why": "Same source markers as the CPT4_HCPCS target. Only V-CPT and V-SRC are 5 characters and therefore survive this row's code_filter; the rest are listed for parity with the parent so the two declarations can be read side by side."
+        },
+        {
+          "codes": [
+            "1028555",
+            "1028556",
+            "1028557",
+            "1028558",
+            "1028559",
+            "1028560",
+            "1028561"
+          ],
+          "why": "Same Global period metadata as the CPT4_HCPCS target. All 7 characters, so this row's code_filter already removes them; listed for parity with the parent."
+        }
+      ]
+    },
+    {
       "vocabulary_id": "CPT4_HCPCS.WITHMODIFIERS",
       "source": "oi",
       "concept_vocabulary_ids": ["CPT4_HCPCS"],
@@ -255,6 +310,18 @@
       "class_note": "No filter: every NDC concept_code, alphanumeric forms included. This is the widest of the three NDC rows and the only one with no in-target exclusions."
     },
     {
+      "vocabulary_id": "NDC.PUBLISHED",
+      "source": "athena",
+      "concept_vocabulary_ids": [
+        "NDC"
+      ],
+      "code_filter": {
+        "pattern": "[0-9]{11}",
+        "why": "The PUBLISHED/LABEL form is not a concept_code, so this row can only be scored through the one configuration that IS recoverable from one: an 11-digit concept_code is labeler(5)-product(4)-package(2) by definition, and the transform below writes it that way. Measured 2026-08-27: 964,622 eleven-digit numeric concept_codes, 0 false negatives against the row's 5-4-2 branch. KNOWN LIMIT OF THIS TARGET, stated rather than hidden: the row's other three branches (4-4-2, 5-3-2, 5-4-1) are 10-digit presentation forms whose segment lengths CANNOT be recovered from an 11-digit code -- 0002-7510-01 and 00002-7510-01 are the same drug -- so no substrate here can score them and they remain checked only by the prose measurement in the row's notes. The 25 alphanumeric 11-character codes are NDC.ALPHANUM's target and are filtered out here."
+      },
+      "transform": "hyphenate_ndc_5_4_2"
+    },
+    {
       "vocabulary_id": "RxNorm",
       "source": "athena",
       "concept_vocabulary_ids": ["RxNorm"]
@@ -300,6 +367,17 @@
       "source": "athena",
       "concept_vocabulary_ids": ["ICDO3"],
       "class_note": "Stock OHDSI ICD-O-3. Includes concept 36402927, whose concept_code '9342/3' carries a TRAILING SPACE (an upstream defect the row's leading/trailing \\s* deliberately accommodates rather than excludes)."
+    },
+    {
+      "vocabulary_id": "ICDO3.CODEONLY",
+      "source": "athena",
+      "concept_vocabulary_ids": [
+        "ICDO3"
+      ],
+      "code_filter": {
+        "pattern": "(?!.*NULL)(?!\\s*\\d{3}(?:-\\d{3})?\\s*\\Z).*",
+        "why": "DETECTOR sibling (seed vfm-6x1): the two forms the row deliberately drops are exactly the two this filter removes, named as a NEGATIVE screen rather than as a restatement of the row's three kept shapes -- so a NEW code shape appearing upstream still fails the row instead of being filtered away by a tautology. (1) Codes carrying the literal string NULL, the composites whose topography half is absent (8003/3-NULL): 1,876 codes, all class ICDO Condition. (2) Codes that are nothing but bare 3-digit groups or ranges of them (972, 801-804): 59 codes, all class ICDO Histology. Both are indistinguishable from ordinary text by shape and belong in a name-directed scan, which is the whole reason this sibling exists -- the default ICDO3 row keeps them and matches 61.5 times per 10k characters of real article text. Measured 2026-08-27 against the 20260625 release: 1,935 of 64,471 concept_codes dropped, 62,536 in target, 0 false negatives."
+      }
     },
     {
       "vocabulary_id": "ICD03_Morphology",
