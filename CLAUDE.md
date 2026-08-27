@@ -47,9 +47,14 @@ preference.
 - **PERMISSIVENESS BREAKS TIES** — when narrowing would risk a real code, present or future, stay
   wide.
 
-`ICD10CM` shows both halves, 2026-08-12. *Permissiveness:* positions 2-3 stay `\w`, which is why
+`ICD10CM` shows both halves. *Permissiveness:* position 3 stayed `\w` for months, which is why
 FY2026's `QA0` — the first category ever with a letter in position 2 — needed no edit here, while a
-consumer that had respelled the shape more strictly went blind to a whole chapter. *Narrowness:* that
+consumer that had respelled the shape more strictly went blind to a whole chapter. ⚠️ **That example
+is historical as of 2026-08-27**: position 3 is now `[0-9ABab]` and the `QA` branch requires a
+following digit, because the wildcard was admitting `T2DM`, `QALY`, `H2O` and `T2D` into a human
+reviewer's candidate list. Measured at **0 new false negatives** over all 100,035 codes — the `QA0`
+case is now enumerated explicitly rather than covered by a wildcard, which is narrowness winning on
+its own terms rather than permissiveness being abandoned. See `CHANGELOG.md`. *Narrowness:* that
 same row was still narrowed twice, for free — position 1 to a letter (the old shape accepted 16,100
 of 17,564 `ICD9CM` codes; `.DOTLESS` accepted 17,562, nearly the whole vocabulary) and position 2 to
 (digit | `QA`), dropping 426 ordinary word-tokens (`ABC`, `ALL`, `Age`). Both cost **zero in-target
