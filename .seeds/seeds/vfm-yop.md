@@ -26,27 +26,33 @@ concepts.
 MEASURED 2026-08-17 against Athena 20260625 CONCEPT (10,281,915 distinct
 (vocabulary_id, concept_code) across 131 vocabularies):
 
-  ICD10PCS length distribution
-    1ch 17 | 2ch 115 | 3ch 918 | 4ch 12,049 | 5ch 34,590 | 6ch 67,079 | 7ch 82,327 | 10ch 3
-    (the 10ch are the MTHU* UMLS GEM nodes, already excluded by the target)
-    -> 82,327 billable codes vs 114,768 hierarchy nodes (+3 excluded MTHU)
+ICD10PCS length distribution
+1ch 17 | 2ch 115 | 3ch 918 | 4ch 12,049 | 5ch 34,590 | 6ch 67,079 | 7ch 82,327 | 10ch 3
+(the 10ch are the MTHU\* UMLS GEM nodes, already excluded by the target)
+-> 82,327 billable codes vs 114,768 hierarchy nodes (+3 excluded MTHU)
 
-  DRG (871) n ICD10PCS (197,098) = 52 shared code strings — ALL 52 are 3 characters
-  Requiring exactly 7 characters:
+DRG (871) n ICD10PCS (197,098) = 52 shared code strings — ALL 52 are 3 characters
+Requiring exactly 7 characters:
+
+```
     DRG    n ICD10PCS(7) = 0 shared strings
     RxNorm n ICD10PCS(7) = 0 shared strings  (was 3)
+```
 
 So the ENTIRE cross-vocabulary collision between ICD10PCS and both DRG and RxNorm is carried by
 the partial hierarchy nodes, and a length constraint removes it completely — no alphabet change,
 no new artifact, no release pin, no size cost.
 
-This is what [[vfm-k2n]] already asks for: the default targets CLAIMS-OBSERVABLE codes and
+This is what \[[vfm-k2n]\] already asks for: the default targets CLAIMS-OBSERVABLE codes and
 variants carry the full vocabulary. A hierarchy node is not claims-observable. Today's default is
 arguably a standing violation of that principle rather than a new narrowing.
 
 PROPOSED
+
+```
   ICD10PCS           [0-9A-HJ-NP-Za-hj-np-z]{7}      (billable form — the default)
   ICD10PCS.COMPLETE  [0-9A-HJ-NP-Za-hj-np-z]{1,7}    (today's pattern, unchanged)
+```
 
 Naming follows NDC's precedent — `NDC` is the 11-digit claims form and `NDC.COMPLETE` is the 9+11
 full vocabulary, the same default-vs-whole-vocabulary split. The alternative is `.WITHHIERARCHY`
@@ -64,4 +70,4 @@ Case stays permissive. The existing note is right that `[0-9A-HJ-NP-Z]` would ha
 lowercase-normalizing caller a silent 100% false-negative rate. This seed changes length only.
 
 Evidence: claude_stuff/code-collision-20260817-151740.log
-          claude_stuff/pcs-length-20260817-151904.log
+claude_stuff/pcs-length-20260817-151904.log

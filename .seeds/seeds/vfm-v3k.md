@@ -1,6 +1,6 @@
 ---
 id: vfm-v3k
-title: "Committed edge-case fixtures: known-good as a hard gate, known-bad as a burn-down that can only shrink"
+title: 'Committed edge-case fixtures: known-good as a hard gate, known-bad as a burn-down that can only shrink'
 status: captured
 type: idea
 created_at: 2026-08-27T20:56:05.528959+00:00
@@ -17,21 +17,23 @@ converted_at: 2026-09-02T14:41:48.760748+00:00
 
 RYAN, 2026-08-27:
 
-  "I wonder if vocabulary_formats needs to keep a collection of known good, known positive edge
-   cases, and known negative edge cases. I am tempted almost to have a testing framework put in
-   that would run each regular expression through a set of known good cases just to verify that
-   we never drift into false negative territory, but then also maintains a set of things that
-   have historically been false positives that we would like to tighten against."
+"I wonder if vocabulary_formats needs to keep a collection of known good, known positive edge
+cases, and known negative edge cases. I am tempted almost to have a testing framework put in
+that would run each regular expression through a set of known good cases just to verify that
+we never drift into false negative territory, but then also maintains a set of things that
+have historically been false positives that we would like to tighten against."
 
 Yes. It is the executable form of the ratchet in vfm-yr3, and it fills a real gap rather than
 duplicating what is here.
 
 ## WHAT ALREADY EXISTS, so this does not reinvent it
 
+```
   checks/false_negatives.py  (just test)   every row vs its declared target, pulled LIVE from the
                                            OHDSI substrate. The completeness half.
   checks/prose.py            (just prose)  every row vs ordinary English. Explicitly "A REPORT,
                                            NOT A GATE" -- no threshold, and rightly so.
+```
 
 ## THE TWO GAPS
 
@@ -46,21 +48,25 @@ duplicating what is here.
 
 ## THE DESIGN, and the asymmetry is the point
 
+```
 known-good        must match. HARD GATE. A failure is a false negative, which vfm-yr3 makes
                   inviolable. Small and hand-picked: the structural edges, not a sample --
                   C4A and D3A (letter in position 3), QA0 (letter in position 2), I10 (bare
                   3-char category), E11.9, V45.81, NDC 9- and 11-digit forms, and every code
                   a past regression actually rejected.
+```
 
-known-bad         must NOT match, in TWO STATES:
+known-bad must NOT match, in TWO STATES:
 
-                    rejected      the row does not match it and never may again.
-                                  HARD GATE. Regression protection.
-                    still-matching  the row DOES match it. Recorded as KNOWN DEBT.
-                                  NOT a failure.
+```
+                rejected      the row does not match it and never may again.
+                              HARD GATE. Regression protection.
+                still-matching  the row DOES match it. Recorded as KNOWN DEBT.
+                              NOT a failure.
 
-                  An entry may move still-matching -> rejected. It must NEVER move back. That
-                  one-way constraint IS the ratchet, made executable.
+              An entry may move still-matching -> rejected. It must NEVER move back. That
+              one-way constraint IS the ratchet, made executable.
+```
 
 This shape already exists in the sibling literature repo as an xfail burn-down (17 flattening
 sites in 11 modules, with the marker asserting that an XPASS means the work is done). Same idea:

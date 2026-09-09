@@ -1,6 +1,6 @@
 ---
 id: vfm-31w
-title: "Add a SECOND table: the vocab-label id-normalization REGISTRY (verbatim label seen in the wild -> OHDSI vocabulary_id, or BLANK = not supported in OHDSI)"
+title: 'Add a SECOND table: the vocab-label id-normalization REGISTRY (verbatim label seen in the wild -> OHDSI vocabulary_id, or BLANK = not supported in OHDSI)'
 status: captured
 type: decision
 created_at: 2026-07-25T17:46:20.650965+00:00
@@ -23,11 +23,13 @@ Decided by Ryan across litmine's lit-et6.1 (2026-07-23 refinement) and refined 2
 only in litmine's seed tree, and this repo had no seeds at all.
 
 ## The decision
+
 vocabulary_formats gains a SECOND table alongside the format regexes: an **ID-normalization map**
 from a vocabulary label 'hit in the wild' -> a known-good OHDSI `vocabulary_id`.
 Examples: 'ICD-10-CM' -> ICD10CM; WHO 'ICD-10' -> ICD10; 'CPT' / 'CPT-4' -> CPT4.
 
 ## It is a REGISTRY, not just a mapping (Ryan, 2026-07-24)
+
 Every vocabulary label encountered in the literature is recorded **verbatim**, and each row resolves
 to EITHER a known-good OHDSI vocabulary_id OR a **BLANK** id meaning 'this vocabulary is not
 supported in OHDSI (as of now)'. Ryan's words: 'if the vocab doesn't exist, we record it as it
@@ -35,6 +37,7 @@ appears in the literature into that mapping file and either derive a mapping or 
 with no OHDSI ID to indicate that the vocab isn't supported in OHDSI.'
 
 Consequences:
+
 - The table is the COMPLETE registry of labels seen + their OHDSI status — one source of truth.
   A new unseen label is appended verbatim, then mapped or left blank.
 - **A blank id IS the non-OMOP gate.** litmine's 'extract but don't produce' set (lit-et6.3) is
@@ -46,36 +49,39 @@ Consequences:
   format/existence check. The map is best-effort; the concept DB is the backstop.
 
 ## Why it belongs here and not in code
+
 Separation of concerns, decided with Ryan: **vocabulary_formats stays DATA-ONLY and polyglot** — the
 Ruby catalog and both Python producers read the same files. Adding Python would break its
 language-neutral value. The CODE that consumes it lives in **codesistant** (repo created 2026-07-23,
-beads cst-*), which reads BOTH tables (format regexes + id-normalization).
+beads cst-\*), which reads BOTH tables (format regexes + id-normalization).
 
 ## Downstream consumers
+
 - codesistant reads it for producer-side vocab-name alignment.
 - code_collector's `vocab_mappings.csv` (21 rows, name -> OHDSI id) eventually MIGRATES here.
 - Its non-blank ids feed the extraction-time enum litmine is considering (lit-et6.4) — deriving the
   enum from this column keeps the enum and the format regexes from drifting apart.
 
 ## Authoring
+
 Hand the entries to a domain agent — Odie (OHDSI/OMOP) or Vincent (vocab) or the vocabulary habitat —
 to author and validate, rather than guessing ids.
 
-
 BEAD FILED 2026-07-25: **vocabulary_formats-e5s**.
-
-
 
 ## CPT4_HCPCS IS A FIRST-CLASS MAPPING TARGET (Ryan, 2026-07-25) — and the PREFERRED one for procedures
 
 Ryan, raising this specifically: 'we'll especially need to do that with HCPCS/CPT as those are divided
 in OHDSI and we unioned them.' The union exists and is verified in the substrate:
 
-    vocabulary_id **CPT4_HCPCS** — 30,357 concepts; CPT4 18,069 + HCPCS 12,822 = 30,891, 534 deduped.
-    vocabulary_version is NULL -> an OI SUPPLEMENTAL vocabulary, not stock Athena.
-    Decided in code_set_catalog csc-171 (2026-06-02); catalog-side wiring is bead csc-meqj.
+```
+vocabulary_id **CPT4_HCPCS** — 30,357 concepts; CPT4 18,069 + HCPCS 12,822 = 30,891, 534 deduped.
+vocabulary_version is NULL -> an OI SUPPLEMENTAL vocabulary, not stock Athena.
+Decided in code_set_catalog csc-171 (2026-06-02); catalog-side wiring is bead csc-meqj.
+```
 
 ### Why this changes the registry's spec as written above
+
 This seed says each row maps to 'a known-good OHDSI vocabulary_id'. Taken literally that excludes
 CPT4_HCPCS (it is an OI supplemental, not stock OHDSI) and pushes the naive mappings
 'CPT' -> CPT4 and 'HCPCS' -> HCPCS — **which re-creates precisely the split csc-171 exists to heal.**
@@ -85,26 +91,28 @@ CPT4_HCPCS is a legal, and for procedure labels the PREFERRED, target — matchi
 'hybrid is the recommended default; originals stay selectable'.
 
 ### The concrete rows this affects (real labels from litmine's 20-paper pilot)
-    'CPT'          (23 code sets)  -> CPT4_HCPCS   (not CPT4)
-    'CPT-4'         (6)            -> CPT4_HCPCS
-    'HCPCS'         (4)            -> CPT4_HCPCS   (not HCPCS)
-    'CPT/HCPCS'     (1)            -> CPT4_HCPCS   <- has NO other home
-    'mixed procedure codes (CPT, CPT Category III/PLA, HCPCS Level II, ICD-10-PCS); labeled only
-     "Procedures" by the authors' (1)            -> needs a call: CPT4_HCPCS loses the ICD-10-PCS
-     part, so this may be a genuine multi-vocabulary set requiring a producer-side SPLIT (rule 4)
-     rather than a single mapping. Flag rather than guess.
+
+```
+'CPT'          (23 code sets)  -> CPT4_HCPCS   (not CPT4)
+'CPT-4'         (6)            -> CPT4_HCPCS
+'HCPCS'         (4)            -> CPT4_HCPCS   (not HCPCS)
+'CPT/HCPCS'     (1)            -> CPT4_HCPCS   <- has NO other home
+'mixed procedure codes (CPT, CPT Category III/PLA, HCPCS Level II, ICD-10-PCS); labeled only
+ "Procedures" by the authors' (1)            -> needs a call: CPT4_HCPCS loses the ICD-10-PCS
+ part, so this may be a genuine multi-vocabulary set requiring a producer-side SPLIT (rule 4)
+ rather than a single mapping. Flag rather than guess.
+```
 
 Without this, the last two map to BLANK and are silently dropped by lit-et6.3's
 extract-but-don't-produce gate — a perfectly good procedure code set lost, which is exactly the
 omission failure habitat rule 7 names as the primary risk.
 
 ### Note on 'preferred'
+
 Mapping 'CPT' -> CPT4_HCPCS is a WIDENING: the label said CPT, the target covers CPT+HCPCS. That is
 correct for BINDING (a CPT code resolves in the hybrid) but the verbatim label stays 'CPT', so no
 provenance is lost. If a consumer ever needs the narrow reading, it has the verbatim key. Worth
 stating explicitly in the table's notes column so a future reader does not 'fix' it back.
-
-
 
 ## THE REGISTRY IS NOW FED BY THE HARVEST (Ryan, 2026-08-04)
 

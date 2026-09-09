@@ -1,6 +1,6 @@
 ---
 id: vfm-6x1
-title: "A validator and a detector want opposite things: 9 rows collapse to a tiny mandatory core and flood free text — census over 2M chars of real articles"
+title: 'A validator and a detector want opposite things: 9 rows collapse to a tiny mandatory core and flood free text — census over 2M chars of real articles'
 status: captured
 type: decision
 created_at: 2026-08-26T20:33:39.191631+00:00
@@ -30,34 +30,36 @@ single cause.
 Every row `\b`-bound and run over **2,020,962 characters of real article body text**
 (25 papers from the pubmed ground-truth queue, XML structural units only):
 
-    row                          matches   per 10k chars
-    ICD10PCS                     172,323      852.7
-    CPT4.WITHMODIFIERS            68,835      340.6
-    CPT4_HCPCS.WITHMODIFIERS      68,835      340.6
-    HCPCS.WITHMODIFIERS           68,806      340.5
-    HCPCS_MODIFIER                68,806      340.5
-    CPT4_MODIFIER                 68,806      340.5
-    CPT4_HCPCS_MODIFIER           68,806      340.5
-    DRG.UNPADDED                  66,718      330.1
-    RxNorm                        40,660      201.2
-    ICD9Proc.DOTLESS              40,639      201.1
-    ICD9Proc                      23,979      118.7
-    ICD9CM.DOTLESS                15,864       78.5
-    ICDO3                         12,388       61.3
-    ICD9CM / DRG                  12,319       61.0
-    ATC                            7,474       37.0
-    ICD03_Morphology.NOBEHAVIOR    3,529       17.5
-    ---- usable as detectors below this line ----
-    ICD10.DOTLESS                    362        1.8
-    ICD10                            273        1.4
-    ICD10CM.DOTLESS                  170        0.8
-    ICD10CM                           77        0.4
-    ICD03_Topography(.DOTLESS)     74 / 120    0.4 / 0.6
-    EDI                               40        0.2
-    CPT4 / CPT4_HCPCS                 29        0.1
-    SNOMED(.WITHRETIRED)               6        0.0
-    HCPCS, NDC x4, RxNorm Extension,
-    ICD03_Morphology                   0        0.0
+```
+row                          matches   per 10k chars
+ICD10PCS                     172,323      852.7
+CPT4.WITHMODIFIERS            68,835      340.6
+CPT4_HCPCS.WITHMODIFIERS      68,835      340.6
+HCPCS.WITHMODIFIERS           68,806      340.5
+HCPCS_MODIFIER                68,806      340.5
+CPT4_MODIFIER                 68,806      340.5
+CPT4_HCPCS_MODIFIER           68,806      340.5
+DRG.UNPADDED                  66,718      330.1
+RxNorm                        40,660      201.2
+ICD9Proc.DOTLESS              40,639      201.1
+ICD9Proc                      23,979      118.7
+ICD9CM.DOTLESS                15,864       78.5
+ICDO3                         12,388       61.3
+ICD9CM / DRG                  12,319       61.0
+ATC                            7,474       37.0
+ICD03_Morphology.NOBEHAVIOR    3,529       17.5
+---- usable as detectors below this line ----
+ICD10.DOTLESS                    362        1.8
+ICD10                            273        1.4
+ICD10CM.DOTLESS                  170        0.8
+ICD10CM                           77        0.4
+ICD03_Topography(.DOTLESS)     74 / 120    0.4 / 0.6
+EDI                               40        0.2
+CPT4 / CPT4_HCPCS                 29        0.1
+SNOMED(.WITHRETIRED)               6        0.0
+HCPCS, NDC x4, RxNorm Extension,
+ICD03_Morphology                   0        0.0
+```
 
 ## ⚠️ ONE REPORTED FLOOD WAS WRONG
 
@@ -73,14 +75,16 @@ earlier report; it was inferred from reading the pattern, not measured.
 
 Every flooding row has **optional parts that collapse to a tiny mandatory core**:
 
-    CPT4.WITHMODIFIERS   (\w\d{3}\w|\w{2})       the |\w{2} alternative is ANY two word chars
-    ATC                  [ABCDGHJ…](\d{2}…)?     trailing ? — a SINGLE LETTER matches
-    ICD10PCS             [0-9A-Za-z]{1,7}        {1,…} admits the vocabulary's hierarchy parents
-    DRG.UNPADDED         \d{1,3}                 any 1-3 digit number
-    RxNorm               \d{2,8}                 any 2-8 digit number
-    ICD9Proc             \d{2}(\.\d{1,2})?       any 2-digit number
-    ICD9Proc.DOTLESS     \d{2,4}
-    ICD9CM.DOTLESS       (V\d{2,4}|\d{3,5}|E\d{3,4})
+```
+CPT4.WITHMODIFIERS   (\w\d{3}\w|\w{2})       the |\w{2} alternative is ANY two word chars
+ATC                  [ABCDGHJ…](\d{2}…)?     trailing ? — a SINGLE LETTER matches
+ICD10PCS             [0-9A-Za-z]{1,7}        {1,…} admits the vocabulary's hierarchy parents
+DRG.UNPADDED         \d{1,3}                 any 1-3 digit number
+RxNorm               \d{2,8}                 any 2-8 digit number
+ICD9Proc             \d{2}(\.\d{1,2})?       any 2-digit number
+ICD9Proc.DOTLESS     \d{2,4}
+ICD9CM.DOTLESS       (V\d{2,4}|\d{3,5}|E\d{3,4})
+```
 
 ## THE RULE THIS ESTABLISHES — and it is not "these rows are wrong"
 
@@ -117,13 +121,13 @@ all-digit strings — 504 billable codes are pure digits. See `vocabulary_format
 rather than the spec, measure false negatives against the whole vocabulary, measure
 matches over this same corpus, and accept "not detectable" where that is the answer.
 
-  1. the seven CPT4/HCPCS MODIFIER rows — all ~340/10k and all sharing `|\w{2}`.
-     Almost certainly ONE fix applied seven times; check whether the modifier belongs
-     as a standalone alternative at all, or only as a suffix.
-  2. DRG.UNPADDED, RxNorm, ICD9Proc(.DOTLESS), ICD9CM.DOTLESS — the bare-numeric
-     class. Likely "not detectable, use the name-directed tier".
-  3. ICDO3 and ICD03_Morphology.NOBEHAVIOR — mid-table, unexamined.
-  4. ATC — 37/10k, caused by the trailing `?`.
+1. the seven CPT4/HCPCS MODIFIER rows — all ~340/10k and all sharing `|\w{2}`.
+   Almost certainly ONE fix applied seven times; check whether the modifier belongs
+   as a standalone alternative at all, or only as a suffix.
+2. DRG.UNPADDED, RxNorm, ICD9Proc(.DOTLESS), ICD9CM.DOTLESS — the bare-numeric
+   class. Likely "not detectable, use the name-directed tier".
+3. ICDO3 and ICD03_Morphology.NOBEHAVIOR — mid-table, unexamined.
+4. ATC — 37/10k, caused by the trailing `?`.
 
 ## METHOD NOTE
 
@@ -132,8 +136,7 @@ Read the pattern to form a hypothesis; run it over real text before believing it
 The corpus is `sources/pubmed/cache/linked/…` in `code_collector`, read-only, via
 `jats.select_body` + `candidates.unit_reading`.
 
-
----
+______________________________________________________________________
 
 ## PER-ROW RESULTS, measured 2026-08-26 against ALL concept_codes in the OHDSI vocabs
 
@@ -144,8 +147,10 @@ That constraint splits the table cleanly, and the split is the finding.
 
 ### TWO TRUE ZERO-FN WINS
 
-    ICD10PCS       852.7 -> ~0.3 /10k   0 FN   [0-9BCDFGHX][0-9A-HJ-NP-Z]{6}
-    DRG.UNPADDED   330.1 ->  61.0 /10k  0 FN   \d{1,3} -> \d{3}
+```
+ICD10PCS       852.7 -> ~0.3 /10k   0 FN   [0-9BCDFGHX][0-9A-HJ-NP-Z]{6}
+DRG.UNPADDED   330.1 ->  61.0 /10k  0 FN   \d{1,3} -> \d{3}
+```
 
 `DRG.UNPADDED` is free: all 871 DRG concept_codes are EXACTLY 3 digits, so `\d{1,3}`
 was pointlessly wide — and the row's own name says it was meant to be padded. 5x
@@ -165,14 +170,16 @@ billing contexts. Measured: **0 occurrences of a code followed by a 2-char token
 across 25 papers**, and the suffix version scored 0.15/10k against the code-only
 version's 0.14 — it bought nothing even if the form existed.
 
-    CODE detector   (?:\d{5}|\d{4}[A-Za-z]|[A-Za-z]\d{4})
-                    0 FN over all 25,850 real 5-char CPT4+HCPCS codes
-                    340.5 -> 0.14 /10k   (a 2,400x reduction)
+```
+CODE detector   (?:\d{5}|\d{4}[A-Za-z]|[A-Za-z]\d{4})
+                0 FN over all 25,850 real 5-char CPT4+HCPCS codes
+                340.5 -> 0.14 /10k   (a 2,400x reduction)
 
-    MODIFIERS       NOT DETECTABLE in free text. 686 distinct two-character tokens,
-                    including MG, AT, AA, AP, AS, US, CT, PT. Enumerating all 686
-                    as literals still measures 64.2/10k, because they ARE ordinary
-                    words. No pattern fixes this.
+MODIFIERS       NOT DETECTABLE in free text. 686 distinct two-character tokens,
+                including MG, AT, AA, AP, AS, US, CT, PT. Enumerating all 686
+                as literals still measures 64.2/10k, because they ARE ordinary
+                words. No pattern fixes this.
+```
 
 **The seven flooding rows all exist because someone combined the two concerns.**
 `(\w\d{3}\w|\w{2})` reads "a code OR a modifier", and the `|\w{2}` alternative is
@@ -187,11 +194,13 @@ US, but the row still claims to validate them.
 
 ### NOT DETECTABLE WITHOUT FALSE NEGATIVES — and that is the answer, not a failure
 
-    RxNorm            \d{6,8} -> 0.0/10k but 4,584 FN of 315,157 (1.5%)
-    ICD9Proc(.DOTLESS) no narrowing beats 100+ FN
-    ICD9CM.DOTLESS    V/E branch alone -> 0.0/10k, but 14,746 FN (the numeric branch)
-    ATC               5+ chars -> 0.0/10k, but 108 FN — `A`, `B`, `C` are REAL codes
-    CPT4/HCPCS mods   686 two-char tokens, indistinguishable by shape
+```
+RxNorm            \d{6,8} -> 0.0/10k but 4,584 FN of 315,157 (1.5%)
+ICD9Proc(.DOTLESS) no narrowing beats 100+ FN
+ICD9CM.DOTLESS    V/E branch alone -> 0.0/10k, but 14,746 FN (the numeric branch)
+ATC               5+ chars -> 0.0/10k, but 108 FN — `A`, `B`, `C` are REAL codes
+CPT4/HCPCS mods   686 two-char tokens, indistinguishable by shape
+```
 
 ### THE STRUCTURAL FINDING
 
@@ -213,12 +222,11 @@ suffixed modifier is empirically answerable by the adjudication screen itself �
 one appears, it will show up as a candidate a reviewer marks as used-as-a-code.
 Nothing needs deciding in advance.
 
-
----
+______________________________________________________________________
 
 ## DRG: RULED 2026-08-26, and the ruling exposes a MISSING AXIS
 
-RYAN: "claims data sometimes reports numbers unpadded, so we need \d{1,3} but for
+RYAN: "claims data sometimes reports numbers unpadded, so we need \\d{1,3} but for
 papers I'd expect 0 padded every time."
 
 So `DRG.UNPADDED`'s `\d{1,3}` is **CORRECT and stays**. The earlier reading —
@@ -247,21 +255,23 @@ A `notes` column already exists and IS being written — every one of the 37 row
 one, median 583 characters, and 35 mention claims, papers, detection or validation.
 So the knowledge is captured. What is missing is that it is captured as PROSE:
 
-  * a human choosing a row must read ~21,000 characters to compare 37 of them;
-  * **a program cannot ask.** `code_collector-azyr.3` had to MEASURE which rows were
-    detector-safe, binding each over 2,020,962 characters of article text, because
-    the table could not be queried for it. That cost is already paid once and will
-    be paid again by the next consumer.
+- a human choosing a row must read ~21,000 characters to compare 37 of them;
+- **a program cannot ask.** `code_collector-azyr.3` had to MEASURE which rows were
+  detector-safe, binding each over 2,020,962 characters of article text, because
+  the table could not be queried for it. That cost is already paid once and will
+  be paid again by the next consumer.
 
 The rows already vary along at least two axes nobody has written down:
 
-    CONTEXT   what data is this row meant to survive?
-              claims (DRG.UNPADDED, NDC) · literature (NDC.PUBLISHED) · the concept
-              table itself (ICD10PCS's {1,7}, which admits hierarchy parents)
+```
+CONTEXT   what data is this row meant to survive?
+          claims (DRG.UNPADDED, NDC) · literature (NDC.PUBLISHED) · the concept
+          table itself (ICD10PCS's {1,7}, which admits hierarchy parents)
 
-    USE       fullmatch VALIDATOR on a string you already have, or \b-bound DETECTOR
-              scanned over prose? They want opposite things, and this table serves
-              both from one column.
+USE       fullmatch VALIDATOR on a string you already have, or \b-bound DETECTOR
+          scanned over prose? They want opposite things, and this table serves
+          both from one column.
+```
 
 `vfm-k2n` already recorded the damage when this stays implicit: NDC's default
 quietly widened toward "everything real" and came to reject 338,328 real codes,
@@ -270,17 +280,19 @@ naming which one it served.
 
 Reshaped into `vocabulary_formats-5i7`.
 
-
 ## ICD10CM.DOTLESS joins the census — measured 2026-08-27 from a consumer, not a scan
 
 Found when Ryan asked why T2DM and QALY were being offered as code candidates on a sleep-apnea
 paper by the literature-mining consumer.
 
-    ICD10CM.DOTLESS   (?:QA|[A-Za-z][0-9])[0-9A-Za-z]\w{0,4}
+```
+ICD10CM.DOTLESS   (?:QA|[A-Za-z][0-9])[0-9A-Za-z]\w{0,4}
+```
 
 Two holes:
-  - the QA branch requires NO DIGIT AT ALL, so QALY matches (QA + L + Y)
-  - [A-Za-z][0-9] then \w{0,4} takes T2DM (T, 2, then DM as trailing word characters)
+
+- the QA branch requires NO DIGIT AT ALL, so QALY matches (QA + L + Y)
+- [A-Za-z][0-9] then \\w{0,4} takes T2DM (T, 2, then DM as trailing word characters)
 
 It ranks above the other census rows for one reason: the consumer scans this shape on EVERY
 document regardless of which vocabularies the document names, where the other flooding rows are
@@ -295,8 +307,10 @@ times — T2DM, T90, H2O, S13b.
 
 Over 30 articles, 1,640 candidate tokens:
 
-    starting with a letter:  120 occurrences, 114 distinct
-    matching the QA branch:    1 occurrence,    1 distinct  (QALY)
+```
+starting with a letter:  120 occurrences, 114 distinct
+matching the QA branch:    1 occurrence,    1 distinct  (QALY)
+```
 
 109 of the 114 are REAL codes: N05A/N05B/N05C/N06A/N06B/N06C/N07B (ATC), U07.1, I60, I69, C50,
 C76, C80, C77.3, B18.0, B18.1, B20, B97.35, R75, Z21, Z22.51, plus the wildcard notations F11.xxx

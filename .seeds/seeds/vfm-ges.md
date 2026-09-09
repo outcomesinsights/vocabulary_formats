@@ -1,6 +1,6 @@
 ---
 id: vfm-ges
-title: "A vocabulary format is ONE regexp: complete over every published code first, then as narrow as a plain regexp reasonably gets"
+title: 'A vocabulary format is ONE regexp: complete over every published code first, then as narrow as a plain regexp reasonably gets'
 status: resolved
 type: decision
 created_at: 2026-08-12T19:56:52.530348+00:00
@@ -57,28 +57,34 @@ consumer is a format that silently rots.
 
 ## THE ASYMMETRY THAT MAKES COMPLETENESS FIRST
 
+```
   FALSE NEGATIVE  silent. The code is not judged invalid -- it is NOT SEEN. Nothing errors, nothing
                   counts it, and 'no matches here' is indistinguishable from 'nothing to match'.
   FALSE POSITIVE  loud. It fails downstream against a real concept table and lands somewhere
                   countable.
+```
 
 ## BUT NARROWNESS IS NOT OPTIONAL -- measured on the same case
 
 Three candidates over the FY2026 note corpus:
 
+```
   [A-Z][0-9A-Z][0-9A-Z]              +59 non-codes for +3 real gains: NOS, NEC, ICD, CDC, BMI, HPV,
                                      CKD, TIA, SLE, and the words 'and', 'are', 'for', 'see', 'the'.
   [A-Z](?:[0-9][0-9A-Z]|[A-Z][0-9])  1 false positive -- GH1, a GENE SYMBOL. Letter-letter-digit IS
                                      that shape, and CMS is adding genetic content every edition.
   (?:[A-Z][0-9]|QA)[0-9A-Z]          CHOSEN by the consumer: +3 real, 0 false, 0 lost.
+```
 
 ## DETECTION IS NOT VALIDATION -- the boundary this repo must not be asked to cross
 
 A consumer asked whether it should just use this repo's regexes for finding codes in prose. It
 cannot, and the README already says why in other words ('to see if a code COULD be possibly valid').
 
+```
   VALIDATION (this repo)  ANCHORED, permissive. 'Could this STRING be a code?'
   DETECTION (consumer)    UNANCHORED, must be strict. 'WHERE in this sentence is a code?'
+```
 
 Unanchored, ^\\w{3}$ shreds ordinary prose -- over one real note it yields 'Cod', 'fir', 'any',
 'NOS', 'and', 'see', 'the', 'ICD'. So a detector is legitimately STRICTER than the format. The

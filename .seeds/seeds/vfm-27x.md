@@ -28,11 +28,13 @@ MEASURED over the 82,327 billable 7-character codes (Athena 20260625). All three
 exactly 7 characters so they are comparable; the SHIPPED row is the case-permissive {1,7} form,
 which is looser than line A:
 
+```
   A. one alphabet      [0-9A-HJ-NP-Z]{7}          accepts 52,523,350,144   637,985x over-permissive
   B. per-position      102 bytes                  accepts 24,716,870,656   300,228x over-permissive
   C. all legit paths   377,446 bytes (trie)       accepts exactly 82,327        1x
+```
 
-  distinct values per position: [17, 34, 34, 34, 32, 34, 34]
+distinct values per position: [17, 34, 34, 34, 32, 34, 34]
 
 PER-POSITION CONDENSATION BUYS A FACTOR OF 2. Only position 1 (section, 17 values) and position 5
 (32) narrow at all; positions 2, 3, 4, 6 and 7 each use essentially the entire 34-character
@@ -65,9 +67,9 @@ be a cheap prefilter that misses no real code. The condensed grammar is the answ
 consumer that CANNOT reach a vocabulary. Handed to litmine 2026-08-17 as an architecture question
 for that repo to answer; it is not a formats change.
 
-Related: [[vfm-k2n]] (default = claims-observable), and the global ambiguity ceiling — 93.4% of
+Related: \[[vfm-k2n]\] (default = claims-observable), and the global ambiguity ceiling — 93.4% of
 distinct OHDSI code strings are claimed by exactly one vocabulary, so membership is drastically
 more discriminating than shape, which is what makes stage 2 worth building at all.
 
 Evidence: claude_stuff/grammar-condensation-20260817-152741.log
-          claude_stuff/code-collision-20260817-151740.log
+claude_stuff/code-collision-20260817-151740.log

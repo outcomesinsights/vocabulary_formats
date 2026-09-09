@@ -24,11 +24,13 @@ execute it is not here.
 
 ## The problem, in one row
 
-    label          mixed procedure codes (CPT, CPT Category III/PLA, HCPCS Level II, ICD-10-PCS);
-                   labeled only "Procedures" by the authors
-    vocabulary_id  (blank)
-    status         multi_vocabulary
-    notes          FLAGGED, do not map. CPT4_HCPCS would silently drop the ICD-10-PCS members.
+```
+label          mixed procedure codes (CPT, CPT Category III/PLA, HCPCS Level II, ICD-10-PCS);
+               labeled only "Procedures" by the authors
+vocabulary_id  (blank)
+status         multi_vocabulary
+notes          FLAGGED, do not map. CPT4_HCPCS would silently drop the ICD-10-PCS members.
+```
 
 Everything a producer needs to perform the split is present — and present only as PROSE, inside a
 free-text label and a free-text note. To act on it, a producer must re-read English and infer
@@ -39,7 +41,9 @@ model re-deriving something a table could state.
 
 The second such row makes it sharper, because its components are NOT recoverable from prose alone:
 
-    ICD-9-CM / ICD-10-CM (mixed; printed as one unlabeled list)
+```
+ICD-9-CM / ICD-10-CM (mixed; printed as one unlabeled list)
+```
 
 Here the split is not even a partition by label — it needs per-CODE adjudication, since the paper
 printed one undifferentiated list. Two multi_vocabulary rows, two different kinds of split.
