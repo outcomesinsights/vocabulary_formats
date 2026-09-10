@@ -41,3 +41,4 @@
 # - github.org
 # - github.repo
 
+sync.remote: "git+ssh://git@github.com/outcomesinsights/vocabulary_formats.git"
