@@ -8,3 +8,6 @@ claude_stuff/
 
 # Python bytecode from `just prose` importing the harness next door
 __pycache__/
+
+# Claude Code agent worktrees — local, per-agent; never committed
+.claude/worktrees/
