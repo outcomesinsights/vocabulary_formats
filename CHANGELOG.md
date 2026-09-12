@@ -17,7 +17,7 @@ negatives against the full concept list before landing.
 **Measurement discipline.** Tighten only with (a) the full concept list scored before and after,
 and (b) the real corpus tokens that motivated it. Reading a regex is not measuring it.
 
----
+______________________________________________________________________
 
 ## 2026-08-27 — `ICD10CM`, `ICD10CM.DOTLESS`: position 3 and the `QA` branch
 
@@ -47,10 +47,10 @@ after   ICD10CM.DOTLESS  (?:QA[0-9]|[A-Za-z][0-9][0-9ABab])[0-9A-Za-z]{0,4}
 
 **False negatives, against all 100,035 concept_codes:**
 
-| row | before | after |
-|---|---|---|
-| `ICD10CM` | 1 (`NOD.X`) | 1 (`NOD.X`) |
-| `ICD10CM.DOTLESS` | 1 (`NODX`) | 1 (`NODX`) |
+| row               | before      | after       |
+| ----------------- | ----------- | ----------- |
+| `ICD10CM`         | 1 (`NOD.X`) | 1 (`NOD.X`) |
+| `ICD10CM.DOTLESS` | 1 (`NODX`)  | 1 (`NODX`)  |
 
 `NOD.X` ("No diagnosis", `concept_id` 35209512) is `invalid_reason='D'`, retired 2009-12-31, and
 was already a documented deliberate exclusion. **Zero new false negatives.**

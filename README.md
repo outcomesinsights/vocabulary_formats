@@ -4,27 +4,27 @@ PCRE that verify the correctness of codes used in various medical terminologies
 
 ## Why?
 
-In dealing with various medical terminologies, there are occasions when we need to ensure we are using valid codes from sources such as claims data, vocabulary files, or user-entered data.  It is not always feasible to compare these codes to a database of known valid codes.  The database may not be up-to-date.  There might be codes that are unknown to the database.  Access to the database might be difficult to set up.
+In dealing with various medical terminologies, there are occasions when we need to ensure we are using valid codes from sources such as claims data, vocabulary files, or user-entered data. It is not always feasible to compare these codes to a database of known valid codes. The database may not be up-to-date. There might be codes that are unknown to the database. Access to the database might be difficult to set up.
 
-Sometimes it's easier to see if a code "looks" like a valid code, hence these regexps.  The goal is to provide a set of regexps that verify if a code from a given terminology "looks" like the kind of code we expect.
+Sometimes it's easier to see if a code "looks" like a valid code, hence these regexps. The goal is to provide a set of regexps that verify if a code from a given terminology "looks" like the kind of code we expect.
 
 ## The published interface — what you may fetch, and what you may rely on
 
-**Four files are the interface.  Everything else in this repository is internal.**
+**Four files are the interface. Everything else in this repository is internal.**
 
-| Published artifact | Answers |
-| --- | --- |
-| `vocabulary_formats.tsv`, `vocabulary_formats.parquet` | *does this string look like a code of vocabulary X?* — 34 rows |
-| `vocabulary_labels.tsv`, `vocabulary_labels.parquet` | *a document called its vocabulary X — which `vocabulary_id` is that?* — 22 rows |
+| Published artifact                                     | Answers                                                                         |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| `vocabulary_formats.tsv`, `vocabulary_formats.parquet` | *does this string look like a code of vocabulary X?* — 34 rows                  |
+| `vocabulary_labels.tsv`, `vocabulary_labels.parquet`   | *a document called its vocabulary X — which `vocabulary_id` is that?* — 22 rows |
 
-They sit at the repository root and keep those names.  Each `.parquet` is generated from its `.tsv`
+They sit at the repository root and keep those names. Each `.parquet` is generated from its `.tsv`
 by `make all` and carries the same rows and the same columns, so take whichever your consumer reads
 more cheaply; `just lint` fails if the two ever drift.
 
 **`checks/` is INTERNAL** — the lint gate, the false-negative harness, the prose report, and
-`checks/validation_targets.json` — and so are the `justfile` and the `Makefile`.  Read them freely
+`checks/validation_targets.json` — and so are the `justfile` and the `Makefile`. Read them freely
 (the JSON is the evidence behind every guarantee below, declared as data), but do not build against
-them: they are the machinery that keeps the tables honest, not part of what ships.  No consumer
+them: they are the machinery that keeps the tables honest, not part of what ships. No consumer
 imports them, which is exactly what lets the tables stay polyglot, and their shape may change
 without notice.
 
@@ -38,26 +38,26 @@ https://raw.githubusercontent.com/outcomesinsights/vocabulary_formats/<ref>/voca
 
 `<ref>` is a branch or a commit SHA, and that choice is the whole story:
 
-- **`main` is the tip, and it moves.**  Rows get added and regexps get narrowed — ten of them on
-  2026-08-13 alone.  A narrowing never costs a real code (see below), but it does change what
+- **`main` is the tip, and it moves.** Rows get added and regexps get narrowed — ten of them on
+  2026-08-13 alone. A narrowing never costs a real code (see below), but it does change what
   *else* the pattern admits, and nothing tells you it happened.
 - **A commit SHA is immutable**, and it is the only reproducible pin available here: this repo has
-  no tags and no releases.  Pin a SHA and re-point it deliberately.
+  no tags and no releases. Pin a SHA and re-point it deliberately.
 
-Vendoring a copy is a legitimate third option — both tables are small and the licence is MIT.  Pin
-a SHA or vendor; either way the version you are on is explicit.  Fetching `main` is the one choice
+Vendoring a copy is a legitimate third option — both tables are small and the licence is MIT. Pin
+a SHA or vendor; either way the version you are on is explicit. Fetching `main` is the one choice
 that hands you drift you cannot see.
 
 ### What you may rely on
 
-- **The four names and paths.**  When an artifact is retired it is recorded under *Retired
+- **The four names and paths.** When an artifact is retired it is recorded under *Retired
   artifacts* below, with the commit and the date, instead of simply vanishing.
 - **`regexp` carries no anchors and no top-level alternation**, so `\A(?:pattern)\z` — or your
-  language's equivalent, in the table two sections down — is always safe to build.  `just lint`
+  language's equivalent, in the table two sections down — is always safe to build. `just lint`
   enforces both.
-- **No false negative inside a row's declared target.**  Every row is scored against the real
+- **No false negative inside a row's declared target.** Every row is scored against the real
   `concept_code` values it claims to cover, and every deliberate exclusion is named with its
-  evidence in `checks/validation_targets.json`.  `just test` enforces it.
+  evidence in `checks/validation_targets.json`. `just test` enforces it.
 - **Unique keys**: `vocabulary_id` in `vocabulary_formats`, `label` in `vocabulary_labels`.
 - **A blank `vocabulary_id` in `vocabulary_labels` is load-bearing**, not missing data — it means
   the label resolves to nothing in our substrate, and consumers gate on it.
@@ -66,14 +66,14 @@ that hands you drift you cannot see.
 
 - **Rows are added** to both tables, and a `regexp` may be **narrowed**: still complete for its
   declared target, but admitting fewer non-codes than the version you last read.
-- **Columns may be added.**  Read columns by NAME, never by position.
-- **`source` and `notes` are prose for humans.**  They carry per-row measurements and reasons; do
+- **Columns may be added.** Read columns by NAME, never by position.
+- **`source` and `notes` are prose for humans.** They carry per-row measurements and reasons; do
   not parse them.
 
 ### Retired artifacts
 
 - **`vocabulary_formats.csv` — retired 2024-06-21**, commit `446f5cb`, replaced by
-  `vocabulary_formats.tsv` (tabs, so a regexp containing a comma needs no quoting).  There is no
+  `vocabulary_formats.tsv` (tabs, so a regexp containing a comma needs no quoting). There is no
   redirect, the raw URL 404s, and it is not coming back — ruled 2026-08-13.
   **Switching a consumer off that URL is not a one-line change:** the CSV's patterns were anchored
   with `^…$` and today's patterns are bare, so swap the URL *and* bind the boundary in the same
@@ -81,68 +81,68 @@ that hands you drift you cannot see.
 
 ## What the Default Row Targets: Claims-Observable Codes
 
-**The primary goal is to recognise codes we would expect to see in claims data — mostly billable.**  For each vocabulary, the DEFAULT row targets that.  Anything broader — the full vocabulary, retired concepts, alternate encodings — belongs in a **named variant**, never in the default.
+**The primary goal is to recognise codes we would expect to see in claims data — mostly billable.** For each vocabulary, the DEFAULT row targets that. Anything broader — the full vocabulary, retired concepts, alternate encodings — belongs in a **named variant**, never in the default.
 
-This has always been the intent; it simply was not written down.  The `.DOTLESS` variants exist because Medicare claims data often reports those codes without the dot, which is a claims-shaped concern from the repo's first commit.
+This has always been the intent; it simply was not written down. The `.DOTLESS` variants exist because Medicare claims data often reports those codes without the dot, which is a claims-shaped concern from the repo's first commit.
 
 Two consumers pull in opposite directions here, which is why the split matters:
 
 1. **Claims canonicalization** — billable, claims-observable codes, canonicalized before an exact join against a concept table.
-2. **Literature validation** — any real code a paper printed, including vocabularies that never appear on a US claim.  SNOMED is in this repo for this reason, not because it shows up in claims.
+2. **Literature validation** — any real code a paper printed, including vocabularies that never appear on a US claim. SNOMED is in this repo for this reason, not because it shows up in claims.
 
-Variants serve both without either winning.  The failure mode to guard against is the **default quietly widening to mean "everything real"**: that is how the `NDC` row came to reject 26% of its own vocabulary while nobody noticed the purpose had blurred.
+Variants serve both without either winning. The failure mode to guard against is the **default quietly widening to mean "everything real"**: that is how the `NDC` row came to reject 26% of its own vocabulary while nobody noticed the purpose had blurred.
 
-Corollary for the two tables: `vocabulary_formats.tsv` answers *"does this look like a code of vocabulary X?"*, and `vocabulary_labels.tsv` answers *"what vocabulary is this label naming?"*.  Neither answers *"is this a real code?"* — that is a lookup against the concept table, and it belongs to the caller.
+Corollary for the two tables: `vocabulary_formats.tsv` answers *"does this look like a code of vocabulary X?"*, and `vocabulary_labels.tsv` answers *"what vocabulary is this label naming?"*. Neither answers *"is this a real code?"* — that is a lookup against the concept table, and it belongs to the caller.
 
 ## The patterns carry NO anchors — the caller supplies the boundary
 
-**Every `regexp` value matches a complete code and nothing more, but it is stored without `^`, `$`, `\A`, `\z` or `\b`.  Binding it to a boundary is the caller's job, and the caller must do it.**
+**Every `regexp` value matches a complete code and nothing more, but it is stored without `^`, `$`, `\A`, `\z` or `\b`. Binding it to a boundary is the caller's job, and the caller must do it.**
 
-Do not treat this as a small ergonomic detail.  Used bare, a pattern matches a code *inside* a longer string, so `I10 and some trailing prose` passes the `ICD10CM` row.  And for the short rows it is far worse than that: `HCPCS_MODIFIER`, `CPT4_MODIFIER` and `CPT4_HCPCS_MODIFIER` are all `\w{2}`, and `DRG` is `\d{3}`.  Unanchored, `\w{2}` is true for **any** value containing two consecutive word characters — the check does not weaken, it stops existing.
+Do not treat this as a small ergonomic detail. Used bare, a pattern matches a code *inside* a longer string, so `I10 and some trailing prose` passes the `ICD10CM` row. And for the short rows it is far worse than that: `HCPCS_MODIFIER`, `CPT4_MODIFIER` and `CPT4_HCPCS_MODIFIER` are all `\w{2}`, and `DRG` is `\d{3}`. Unanchored, `\w{2}` is true for **any** value containing two consecutive word characters — the check does not weaken, it stops existing.
 
 This is deliberate, because the correct anchor differs by language and by job:
 
-| Language | Whole-string validation |
-| --- | --- |
-| Ruby | `/\A(?:#{pattern})\z/` — **not** `^…$`, which are LINE anchors in Ruby, so `"A00\nDROP TABLE codes"` would pass |
-| Python | `re.fullmatch(pattern, s)`, or `re.compile(rf"\A(?:{pattern})\Z")` |
-| R, base | `grepl(paste0("^(", pattern, ")$"), x, perl = TRUE)` |
-| R, stringr | `str_detect(x, paste0("^(", pattern, ")$"))` — `str_detect` alone is an unanchored search.  stringr is ICU, not PCRE, and takes no `perl =` argument |
-| SQL / DuckDB | `regexp_full_match(code, pattern)` |
+| Language     | Whole-string validation                                                                                                                             |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Ruby         | `/\A(?:#{pattern})\z/` — **not** `^…$`, which are LINE anchors in Ruby, so `"A00\nDROP TABLE codes"` would pass                                     |
+| Python       | `re.fullmatch(pattern, s)`, or `re.compile(rf"\A(?:{pattern})\Z")`                                                                                  |
+| R, base      | `grepl(paste0("^(", pattern, ")$"), x, perl = TRUE)`                                                                                                |
+| R, stringr   | `str_detect(x, paste0("^(", pattern, ")$"))` — `str_detect` alone is an unanchored search. stringr is ICU, not PCRE, and takes no `perl =` argument |
+| SQL / DuckDB | `regexp_full_match(code, pattern)`                                                                                                                  |
 
-To *find* codes inside free text rather than validate a known string, anchor on code boundaries instead of string ends — `(?<![0-9A-Za-z])(?:PATTERN)(?![0-9A-Za-z])`.  Shape alone is rarely enough for prose: a scanner usually also needs context (a parenthetical, or a lead-in such as "codes" or "classifiable to").  See the Principles in `CLAUDE.md`.
+To *find* codes inside free text rather than validate a known string, anchor on code boundaries instead of string ends — `(?<![0-9A-Za-z])(?:PATTERN)(?![0-9A-Za-z])`. Shape alone is rarely enough for prose: a scanner usually also needs context (a parenthetical, or a lead-in such as "codes" or "classifiable to"). See the Principles in `CLAUDE.md`.
 
-**Wrap the pattern in a non-capturing group when you anchor it.**  Several rows are alternations, and `\A` + `a|b` + `\z` binds the anchors to the first branch only.  Every row is a single self-contained expression so that `(?:…)` always works — keep it that way when adding rows.
+**Wrap the pattern in a non-capturing group when you anchor it.** Several rows are alternations, and `\A` + `a|b` + `\z` binds the anchors to the first branch only. Every row is a single self-contained expression so that `(?:…)` always works — keep it that way when adding rows.
 
 ## Skewed Towards Valid — permissive is the FLOOR, not the goal
 
-The point of these regexps is to see if a code _could_ be possibly valid.  If the goal is to ensure
+The point of these regexps is to see if a code _could_ be possibly valid. If the goal is to ensure
 that only known, valid codes are permitted, these are not the regular expressions to use.
 
 **The tie-break is an ORDERING, applied in this order:**
 
-1. **COMPLETENESS — never a false negative within the row's declared target.**  Absolute.  A regexp
+1. **COMPLETENESS — never a false negative within the row's declared target.** Absolute. A regexp
    that rejects a code its row is meant to cover is wrong, and nothing about it redeems that.
-2. **NARROWNESS — between two regexps that are both complete, prefer the narrower one.**  Tolerate a
+2. **NARROWNESS — between two regexps that are both complete, prefer the narrower one.** Tolerate a
    false positive only as far as staying complete requires: if a plain regexp excludes it for free,
-   exclude it.  Judge those false positives against ordinary *prose*, not only against sibling
+   exclude it. Judge those false positives against ordinary *prose*, not only against sibling
    vocabularies; these patterns are used to find codes in text.
-3. **PERMISSIVENESS BREAKS TIES.**  When narrowing would put a real code at risk — one published now,
+3. **PERMISSIVENESS BREAKS TIES.** When narrowing would put a real code at risk — one published now,
    or one plausibly published next year — stay wide.
 
 Completeness and the tie-break are what "we'll favor the more permissive" used to say here on its
-own.  Narrowness is what that summary left out, and widening a row that was already complete buys
+own. Narrowness is what that summary left out, and widening a row that was already complete buys
 nothing.
 
 **False negatives are judged against the row's declared target, not against the whole vocabulary.**
 A 9-digit NDC failing the claims-default `NDC` row is correct; the same code failing `NDC.COMPLETE`
-is a bug.  Within a row's stated target, a false negative is never acceptable.
+is a bug. Within a row's stated target, a false negative is never acceptable.
 
 ### The worked example: `ICD10CM` cuts both ways
 
-**For permissiveness — too restrictive disqualifies codes that do not exist yet.**  ICD-10-CM
+**For permissiveness — too restrictive disqualifies codes that do not exist yet.** ICD-10-CM
 introduced codes starting with `U`, particularly for COVID-related diagnoses, and regexps exist
-that mark those as invalid; that kind of regexp is overly restrictive for our purposes.  Positions
+that mark those as invalid; that kind of regexp is overly restrictive for our purposes. Positions
 2-3 of the row are deliberately still `\w` for the same reason: FY2026 introduced `QA0`, the first
 ICD-10-CM category ever to carry a letter in position 2, and the permissive tail is why this row
 needed no edit at all — while a consumer that had respelled the shape more strictly
@@ -151,8 +151,8 @@ needed no edit at all — while a consumer that had respelled the shape more str
 **For narrowness — and yet that same row was narrowed twice on 2026-08-12, both times for free.**
 Position 1 must be a letter: the old `\w{3}(\.\w{1,4})?` accepted 16,100 of 17,564 `ICD9CM` codes as
 valid ICD-10-CM, and the `.DOTLESS` variant's `\w{3,7}` accepted 17,562 of them — nearly the whole
-ICD-9 vocabulary.  Position 2 is a digit or the literal `QA`: `\w` there also matched 426 ordinary
-word-tokens (`ABC`, `ALL`, `ARE`, `Age`, `Air`).  Both narrowings cost **zero in-target false
+ICD-9 vocabulary. Position 2 is a digit or the literal `QA`: `\w` there also matched 426 ordinary
+word-tokens (`ABC`, `ALL`, `ARE`, `Age`, `Air`). Both narrowings cost **zero in-target false
 negatives** across all 100,035 published ICD-10-CM codes; the single code either one costs, `NOD.X`,
 was retired in 2009 and is excluded in the open, with its evidence, in
 `checks/validation_targets.json`.
@@ -161,13 +161,13 @@ was retired in 2009 and is excluded in the open, with its evidence, in
 That is the case for the ordering: completeness is absolute, narrowness is a duty, and permissiveness
 only breaks ties.
 
-Basically, if the regexp yields a false negative, it's not an acceptable regexp.  If it yields a
+Basically, if the regexp yields a false negative, it's not an acceptable regexp. If it yields a
 small number of false positives, we'll allow the ones a plain regexp cannot remove without
 endangering rule 1.
 
 ## Tab Seperated Values (TSV) Format
 
-This repository contains a TSV file of regexps that have been gathered from various sources.  Tabs were chosen over commas to avoid needing to quote regexps that contain commas.  This file is intended to be modified.
+This repository contains a TSV file of regexps that have been gathered from various sources. Tabs were chosen over commas to avoid needing to quote regexps that contain commas. This file is intended to be modified.
 
 ### Parquet Format
 
@@ -184,7 +184,7 @@ Here are the columns:
     - If the regexp is meant to apply to a specific variation of the expected code format, add a suffix to the vocabulary_id
     - e.g. ICD9CM and ICD10CM codes are often reported in Medicare claims data without the "." (dot) in the code so we'd name them ICD9CM.DOTLESS and ICD10CM.DOTLESS
 - regexp
-  - The PCRE that matches the codes in the terminologies.  
+  - The PCRE that matches the codes in the terminologies.
 - source
   - URL to where regexp was found, if applicable
 - notes
@@ -193,39 +193,39 @@ Here are the columns:
 ## `vocabulary_labels.tsv` — the id-normalization registry
 
 A second table, in the same TSV + Parquet shape, answering a different question: **"a document called
-its vocabulary _X_ — which `vocabulary_id` is that?"**  The format regexps say what a code should look
-like; this says which vocabulary a label refers to.  The two join on `vocabulary_id`.
+its vocabulary _X_ — which `vocabulary_id` is that?"** The format regexps say what a code should look
+like; this says which vocabulary a label refers to. The two join on `vocabulary_id`.
 
-It is a **registry, not just a mapping**.  Every label encountered in the wild is recorded *verbatim* —
+It is a **registry, not just a mapping**. Every label encountered in the wild is recorded *verbatim* —
 the verbatim string is the row key, so provenance is never lost — and each row resolves to either a
-`vocabulary_id` in our substrate or a **blank**.  A blank is load-bearing: it makes an unsupported
-vocabulary *visible* instead of letting a code set silently vanish.  Consumers use the blanks as an
+`vocabulary_id` in our substrate or a **blank**. A blank is load-bearing: it makes an unsupported
+vocabulary *visible* instead of letting a code set silently vanish. Consumers use the blanks as an
 extract-but-don't-produce gate.
 
 Columns:
 
-- `label` — the vocabulary name exactly as it appeared in the source.  Never normalized; lookups
+- `label` — the vocabulary name exactly as it appeared in the source. Never normalized; lookups
   should normalize case/whitespace on the consumer side.
 - `vocabulary_id` — the target in our substrate, which **includes OI supplemental vocabularies**
-  (e.g. `CPT4_HCPCS`), not just stock OHDSI ids.  Blank when unresolved.  Blank in the TSV reads back
+  (e.g. `CPT4_HCPCS`), not just stock OHDSI ids. Blank when unresolved. Blank in the TSV reads back
   as NULL from the Parquet; both mean the same thing.
-- `status` — why the row is where it is.  Three values, and the distinction matters because two of
+- `status` — why the row is where it is. Three values, and the distinction matters because two of
   them share a blank `vocabulary_id` for entirely different reasons:
   - `mapped` — resolves to a `vocabulary_id`.
-  - `unsupported` — not in OHDSI or our supplementals *as of now*.  Revisit when a release adds it.
-  - `multi_vocabulary` — the label names more than one vocabulary.  The remedy is a producer-side
+  - `unsupported` — not in OHDSI or our supplementals *as of now*. Revisit when a release adds it.
+  - `multi_vocabulary` — the label names more than one vocabulary. The remedy is a producer-side
     **split** into per-vocabulary code sets, not a single mapping and not waiting on OHDSI.
 - `source` — where the label was observed, with counts.
 - `notes` — anything a future reader needs so they don't "fix" a deliberate decision.
 
 Note that a mapping may deliberately **widen**: `CPT` maps to `CPT4_HCPCS`, which covers CPT *and*
-HCPCS.  That is correct for binding — a CPT code resolves in the hybrid — and costs nothing, because
+HCPCS. That is correct for binding — a CPT code resolves in the hybrid — and costs nothing, because
 the verbatim label stays the row key.
 
 ## What "never reject a real code" is measured against
 
 Every regexp here is validated against the real `concept_code` values in an OHDSI build before it
-ships.  A handful of vocabularies also contain rows that are *not codes*: UMLS source markers
+ships. A handful of vocabularies also contain rows that are *not codes*: UMLS source markers
 (`V-CPT`, `V-SRC`), OMOP metadata (`Global period 90 days`), placeholder rows whose `concept_code` is
 just the `concept_id` (`45532996`, named "Invalid ICD10 Concept, do not use"), and upstream defects.
 Those are deliberately **not** matched — an exclusion is always a documented decision, never a silent
@@ -234,47 +234,47 @@ miss.
 Classification tiers are excluded the same way and for the same reason: `CPT4 Hierarchy` groupers and
 `HCPCS Class` (BETOS) categories are not billable codes.
 
-**That validation re-runs — it is not a claim in the `notes` column.**  `checks/validation_targets.json`
+**That validation re-runs — it is not a claim in the `notes` column.** `checks/validation_targets.json`
 declares as data what each row is held to: which `vocabulary_id`s and `concept_class_id`s make up its
 target, whether retired concepts count, any code transform (`.DOTLESS`, `.UNPADDED`, `.NOBEHAVIOR`),
 and every deliberate exclusion **with the evidence** — `concept_id`, `invalid_reason`,
-`concept_class_id` — that makes it not-a-code.  `just test` pulls each target out of the concept
-table and requires every code in it to match that row's regexp, bound the way a caller binds it.  As
+`concept_class_id` — that makes it not-a-code. `just test` pulls each target out of the concept
+table and requires every code in it to match that row's regexp, bound the way a caller binds it. As
 of 2026-08-13 all 34 rows score **0 false negatives over 8,662,422 codes**.
 
 A row's target is its *own*, never the whole vocabulary: the 9-digit NDCs the claims-default `NDC`
 row rejects are out of target and correct, while the same codes failing `NDC.COMPLETE` would be a
-bug.  Changing what a row is held to means editing that declaration, in the open, next to the reason.
+bug. Changing what a row is held to means editing that declaration, in the open, next to the reason.
 
 ## What "as narrow as a plain regexp reasonably gets" is measured against
 
-**Ordinary prose, not just sibling vocabularies.**  `just prose` scores every row against real
+**Ordinary prose, not just sibling vocabularies.** `just prose` scores every row against real
 running text and reports what it admits — how many distinct word-tokens match, and how many of those
-are ordinary English words rather than code-shaped strings.  Two corpora, both optional, both
+are ordinary English words rather than code-shaped strings. Two corpora, both optional, both
 skipped with a message when absent: the FY2026 **ICD-10-CM tabular** (21,248 distinct tokens from
 25,160 notes and 46,881 code descriptions — clinical prose) and the litmine pilot's **20 PubMed
 Central papers** (17,570 tokens — literature prose, where a loose row costs the most).
 
-This is a **report, not a gate**.  It never fails a run, because a high number can be perfectly
-honest: every two-character string really is a valid HCPCS modifier.  When a row cannot be narrowed,
+This is a **report, not a gate**. It never fails a run, because a high number can be perfectly
+honest: every two-character string really is a valid HCPCS modifier. When a row cannot be narrowed,
 the answer is to **say so in its `notes`**, not to tighten it into a false negative.
 
 The 2026-08-13 sweep (`vocabulary_formats-wir`) scored all 34 rows and narrowed ten of them, each
 with its own before/after pair and each re-validated at **0 in-target false negatives**:
 
-| Row | Ordinary words admitted (tabular corpus), before → after | What the evidence was |
-| --- | --- | --- |
-| `EDI` | 7,637 → **0** | lengths are exactly 5/8/9 and positions 4-5 are digits in all 442,551 codes |
-| `ICD10.DOTLESS` | 5,565 → **15** | `\w{3,7}` was most of the dictionary; codes are letter+digit+alnum |
-| `ICD10PCS` | 5,708 → **2,323** | the PCS spec bars `I` and `O` from every axis; 197,095 codes agree |
-| `NDC.ALPHANUM` | 2,899 → **0** | all 1,302,950 codes begin with the 5-digit FDA labeler segment |
-| `CPT4_HCPCS.WITHMODIFIERS` | 1,269 → **111** | narrowed on the code branch; the `\w{2}` branch is what remains |
-| `CPT4_HCPCS` | 1,158 → **0** | both parents already require digits in positions 2-4 |
-| `ICD10` | 439 → **15** | plus the chapter branch enumerated to the 22 real WHO numerals |
-| `ATC` | 47 → **27** | level 1 is a closed set of 14 anatomical main groups |
-| `HCPCS`, `HCPCS.WITHMODIFIERS` | 0 → 0, 111 → 111 | narrowed for free (all codes are letter + 4 digits), but neither admitted English words to begin with |
+| Row                            | Ordinary words admitted (tabular corpus), before → after | What the evidence was                                                                                 |
+| ------------------------------ | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `EDI`                          | 7,637 → **0**                                            | lengths are exactly 5/8/9 and positions 4-5 are digits in all 442,551 codes                           |
+| `ICD10.DOTLESS`                | 5,565 → **15**                                           | `\w{3,7}` was most of the dictionary; codes are letter+digit+alnum                                    |
+| `ICD10PCS`                     | 5,708 → **2,323**                                        | the PCS spec bars `I` and `O` from every axis; 197,095 codes agree                                    |
+| `NDC.ALPHANUM`                 | 2,899 → **0**                                            | all 1,302,950 codes begin with the 5-digit FDA labeler segment                                        |
+| `CPT4_HCPCS.WITHMODIFIERS`     | 1,269 → **111**                                          | narrowed on the code branch; the `\w{2}` branch is what remains                                       |
+| `CPT4_HCPCS`                   | 1,158 → **0**                                            | both parents already require digits in positions 2-4                                                  |
+| `ICD10`                        | 439 → **15**                                             | plus the chapter branch enumerated to the 22 real WHO numerals                                        |
+| `ATC`                          | 47 → **27**                                              | level 1 is a closed set of 14 anatomical main groups                                                  |
+| `HCPCS`, `HCPCS.WITHMODIFIERS` | 0 → 0, 111 → 111                                         | narrowed for free (all codes are letter + 4 digits), but neither admitted English words to begin with |
 
-**Cross-vocabulary numbers alone would have argued against most of this.**  Narrowing `ICD10CM`'s
+**Cross-vocabulary numbers alone would have argued against most of this.** Narrowing `ICD10CM`'s
 position 2 removed *zero* cross-vocabulary false positives and 426 ordinary word-tokens; the sweep
 exists because that first number said "do not bother" and was wrong.
 
@@ -282,8 +282,8 @@ exists because that first number said "do not bother" and was wrong.
 `HCPCS_MODIFIER`, `CPT4_MODIFIER`, `CPT4_HCPCS_MODIFIER` and every `.WITHMODIFIERS` row admit
 ordinary two-letter words (*of, in, to, at, is, be*) because that is what a modifier looks like.
 `DRG`, `RxNorm`, `ICD03_Morphology.NOBEHAVIOR` and the `.DOTLESS`/`.UNPADDED` rows admit bare
-numbers — including years — for the same reason.  `ICD10PCS` remains the loosest row in the table
-even after narrowing.  Those rows need context from the caller (a field that already holds a code, a
+numbers — including years — for the same reason. `ICD10PCS` remains the loosest row in the table
+even after narrowing. Those rows need context from the caller (a field that already holds a code, a
 parenthetical, a lead-in), and recording that is worth more than a narrowing that would cost a real
 code.
 
@@ -301,15 +301,15 @@ just prose   # The prose-adversary report. What each row admits from real runnin
 make all     # Regenerate both parquets after editing a TSV (`just parquet` calls this).
 ```
 
-All three tee a timestamped log into `claude_stuff/` and print its path.  `just test` reads its
+All three tee a timestamped log into `claude_stuff/` and print its path. `just test` reads its
 substrate from `VOCABULARY_FORMATS_ATHENA_CSV` (a stock Athena `CONCEPT.csv`) and
 `VOCABULARY_FORMATS_OI_DUCKDB` (a `vocabulation` build, the only place the OI-minted vocabularies
 `CPT4_HCPCS` and `ICD03_*` exist); `just prose` reads its corpora from
-`VOCABULARY_FORMATS_TABULAR_DUCKDB` and `VOCABULARY_FORMATS_PAPERS_DIR`.  Defaults for all four are
+`VOCABULARY_FORMATS_TABULAR_DUCKDB` and `VOCABULARY_FORMATS_PAPERS_DIR`. Defaults for all four are
 in the scripts that use them.
 
-**Narrowing a row means running both.**  `just prose` says what the change bought; `just test` says
-what it cost.  A narrowing that costs even one in-target code is a bug, whatever it bought.
+**Narrowing a row means running both.** `just prose` says what the change bought; `just test` says
+what it cost. A narrowing that costs even one in-target code is a bug, whatever it bought.
 
 ## Contributing
 
@@ -325,12 +325,12 @@ and the next consumer would have repeated that.
 
 ### `context` — what data must this row survive?
 
-| value | meaning |
-|---|---|
-| `claims` | administrative claims. May print forms the concept table never contains — `DRG.UNPADDED` is `\d{1,3}` because claims report `12` for `012`. |
-| `literature` | published papers. Also prints forms no concept_code contains — `NDC.PUBLISHED` exists for hyphenated `0002-7510-01`. |
+| value        | meaning                                                                                                                                            |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `claims`     | administrative claims. May print forms the concept table never contains — `DRG.UNPADDED` is `\d{1,3}` because claims report `12` for `012`.        |
+| `literature` | published papers. Also prints forms no concept_code contains — `NDC.PUBLISHED` exists for hyphenated `0002-7510-01`.                               |
 | `vocabulary` | the OHDSI concept table itself, canonical forms only. `ICD10PCS`'s `{1,7}` is right here because a 3-character hierarchy parent IS a concept_code. |
-| `unstated` | nobody has said. **Not a synonym for "any"** — it means the question has not been answered for this row. |
+| `unstated`   | nobody has said. **Not a synonym for "any"** — it means the question has not been answered for this row.                                           |
 
 ⚠️ **Measuring a row against every concept_code is necessary and NOT sufficient.**
 The vocabulary holds canonical forms; the wild holds presentations of them. `\d{1,3}`
@@ -343,10 +343,10 @@ context is worse than an admitted gap — it would read as knowledge.
 
 ### `use` — validator, detector, or both?
 
-| value | meaning |
-|---|---|
-| `validator` | safe with `fullmatch` on a string you already have. **Every row is at least this.** |
-| `validator,detector` | also safe bound with `\b` and scanned over prose. |
+| value                | meaning                                                                             |
+| -------------------- | ----------------------------------------------------------------------------------- |
+| `validator`          | safe with `fullmatch` on a string you already have. **Every row is at least this.** |
+| `validator,detector` | also safe bound with `\b` and scanned over prose.                                   |
 
 Assigned by MEASUREMENT, not judgement: a row is `detector` if it matched fewer than
 **2 per 10k characters** over the corpus above. The gap in the data is wide — the
@@ -364,4 +364,3 @@ rather than having their defaults narrowed.
 has short codes at the top of it — `A` in ATC, `79` in CPT, `250` in ICD-9 — and under
 a no-false-negative rule those cannot be dropped, so they cannot be detected. A
 consumer needing them must key on the document naming the vocabulary, not on shape.
-

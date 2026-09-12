@@ -93,7 +93,9 @@ def connect(sources):
             continue
         try:
             con.execute(f"ATTACH '{sql_str(source['path'])}' AS {name} (READ_ONLY)")
-        except duckdb.Error as exc:  # in use by another process, corrupt, wrong version...
+        except (
+            duckdb.Error
+        ) as exc:  # in use by another process, corrupt, wrong version...
             source["available"] = False
             source["reason"] = f"cannot be opened ({exc.__class__.__name__}: {exc})"
     return con
@@ -214,7 +216,9 @@ def main():
     print("false-negative harness -- every row against its own declared target")
     print(f"  targets: {TARGETS}")
     for name, source in sources.items():
-        state = "available" if source["available"] else f"UNAVAILABLE ({source['reason']})"
+        state = (
+            "available" if source["available"] else f"UNAVAILABLE ({source['reason']})"
+        )
         print(f"  source {name}: {source['path']} -- {state}")
 
     if not any(s["available"] for s in sources.values()):
@@ -258,7 +262,9 @@ def main():
     errors = [r for r in results if "error" in r]
     offenders = [r for r in results if r.get("false_negatives")]
     if offenders:
-        print("\nFALSE NEGATIVES -- codes inside the row's own target that the regexp rejects:")
+        print(
+            "\nFALSE NEGATIVES -- codes inside the row's own target that the regexp rejects:"
+        )
         for r in offenders:
             vid = r["vocabulary_id"]
             print(f"\n  {vid}  ({len(r['false_negatives'])} of {r['tested']:,} tested)")

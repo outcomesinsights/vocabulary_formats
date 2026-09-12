@@ -98,8 +98,14 @@ TOKENIZER_SELFTEST = [
     ("code A15-A19 first", {"code", "A15", "A19", "first"}),
     ("8140/3 histology", {"8140", "3", "histology"}),
     ("...", set()),  # dots alone are not a token
-    ("p=.05, n=1,204", {"p", "05", "n", "1", "204"}),  # commas split, a leading dot is stripped
-    ("O.R. 1.5", {"O.R", "1.5"}),  # an interior dot stays -- E11.9 must survive tokenization
+    (
+        "p=.05, n=1,204",
+        {"p", "05", "n", "1", "204"},
+    ),  # commas split, a leading dot is stripped
+    (
+        "O.R. 1.5",
+        {"O.R", "1.5"},
+    ),  # an interior dot stays -- E11.9 must survive tokenization
     ("under_score", {"under", "score"}),  # '_' is not in the token alphabet, unlike \\w
 ]
 
@@ -178,7 +184,9 @@ def main(argv):
 
     extra = []
     for arg in argv:
-        if arg == "--try":  # the flag is a marker; the candidate rides in the next argument
+        if (
+            arg == "--try"
+        ):  # the flag is a marker; the candidate rides in the next argument
             continue
         if "=" not in arg:
             print(f"unrecognised argument {arg!r}; use --try 'LABEL=REGEXP'")
@@ -195,7 +203,9 @@ def main(argv):
     corpora = {}
     for name, spec in CORPORA.items():
         source = resolve(name, spec)
-        state = "available" if source["available"] else "UNAVAILABLE (not on this machine)"
+        state = (
+            "available" if source["available"] else "UNAVAILABLE (not on this machine)"
+        )
         print(f"  corpus {name}: {source['path']} -- {state}")
         if source["available"]:
             corpora[name] = source
@@ -205,7 +215,9 @@ def main(argv):
             "\nSKIPPED: no text corpus on this machine, so there is nothing to score the rows\n"
             "         against. This is a report, not a gate -- `just lint` and `just test` are\n"
             "         unaffected. Point one of these at a corpus and re-run:\n"
-            + "".join(f"           {s['env']}={s['default_path']}\n" for s in CORPORA.values())
+            + "".join(
+                f"           {s['env']}={s['default_path']}\n" for s in CORPORA.values()
+            )
         )
         return 0
 
@@ -219,7 +231,11 @@ def main(argv):
     names = list(loaded)
     header = "  " + f"{'row':<28}" + "".join(f"{n:>34}" for n in names)
     print("\n" + header)
-    print("  " + " " * 28 + "".join(f"{'tokens   (letters/digits/mixed)':>34}" for _ in names))
+    print(
+        "  "
+        + " " * 28
+        + "".join(f"{'tokens   (letters/digits/mixed)':>34}" for _ in names)
+    )
     for vid, pattern in scored:
         cells = ""
         for name in names:
@@ -230,7 +246,9 @@ def main(argv):
             )
         print(f"  {vid:<28}{cells}")
 
-    print("\nWHAT EACH ROW ADMITS (alphabetic tokens first -- those are the ordinary words):")
+    print(
+        "\nWHAT EACH ROW ADMITS (alphabetic tokens first -- those are the ordinary words):"
+    )
     for vid, pattern in scored:
         print(f"\n  {vid}   {pattern}")
         for name in names:

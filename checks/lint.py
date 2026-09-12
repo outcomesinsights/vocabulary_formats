@@ -124,7 +124,9 @@ def scan_pattern(pattern):
             i += 1
             if i < len(pattern) and pattern[i] == "^":  # negation, not an anchor
                 i += 1
-            if i < len(pattern) and pattern[i] == "]":  # a literal ] must lead the class
+            if (
+                i < len(pattern) and pattern[i] == "]"
+            ):  # a literal ] must lead the class
                 i += 1
             continue
         if ch in "^$":
@@ -179,7 +181,9 @@ def read_table(path, columns):
     """Parse a TSV by hand -- no csv module, no duckdb. Checks tabs, columns, and returns rows."""
     text = path.read_bytes().decode("utf-8")
     if "\r" in text:
-        fail(path.name, "contains CR characters; the file must use bare LF line endings")
+        fail(
+            path.name, "contains CR characters; the file must use bare LF line endings"
+        )
     if not text.endswith("\n"):
         fail(path.name, "does not end with a newline")
     lines = text.split("\n")
@@ -284,7 +288,9 @@ def check_parquet_in_sync(malformed):
     for tsv in (FORMATS, LABELS):
         parquet = tsv.with_suffix(".parquet")
         if tsv in malformed:
-            print(f"  {parquet.name}: not compared -- {tsv.name} did not survive the checks above")
+            print(
+                f"  {parquet.name}: not compared -- {tsv.name} did not survive the checks above"
+            )
             continue
         if not parquet.exists():
             fail(parquet.name, "is missing", PARQUET_RULE)
@@ -322,7 +328,11 @@ def check_parquet_in_sync(malformed):
                 "    parser. A mismatch means a quote or newline inside a field is being consumed.",
             )
         if tsv_cols != pq_cols:
-            fail(parquet.name, f"columns are {pq_cols!r}, TSV has {tsv_cols!r}", PARQUET_RULE)
+            fail(
+                parquet.name,
+                f"columns are {pq_cols!r}, TSV has {tsv_cols!r}",
+                PARQUET_RULE,
+            )
             continue
         if len(tsv_rows) != len(pq_rows):
             fail(
@@ -372,7 +382,10 @@ def check_targets(rows):
                 f"    Known keys: {sorted(KNOWN_TARGET_KEYS)!r}",
             )
         if target.get("source") not in sources:
-            fail(f"{TARGETS.name} {vid}", f"names unknown source {target.get('source')!r}")
+            fail(
+                f"{TARGETS.name} {vid}",
+                f"names unknown source {target.get('source')!r}",
+            )
         if not target.get("concept_vocabulary_ids"):
             fail(f"{TARGETS.name} {vid}", "declares no concept_vocabulary_ids")
         transform = target.get("transform")
@@ -386,7 +399,10 @@ def check_targets(rows):
             try:
                 re.compile(bound(code_filter.get("pattern", "")))
             except re.error as exc:
-                fail(f"{TARGETS.name} {vid}", f"code_filter.pattern does not compile -- {exc}")
+                fail(
+                    f"{TARGETS.name} {vid}",
+                    f"code_filter.pattern does not compile -- {exc}",
+                )
             if not code_filter.get("why", "").strip():
                 fail(f"{TARGETS.name} {vid}", "code_filter has no 'why'")
         for exclusion in target.get("exclusions", []):
@@ -427,7 +443,9 @@ def main():
         rows_by_table[path] = read_table(path, TABLES[path])
         if len(failures) > before:
             malformed.add(path)
-        print(f"  {path.name}: {len(rows_by_table[path])} rows, {len(TABLES[path])} columns")
+        print(
+            f"  {path.name}: {len(rows_by_table[path])} rows, {len(TABLES[path])} columns"
+        )
     formats_rows, labels_rows = rows_by_table[FORMATS], rows_by_table[LABELS]
 
     compiled = check_regexps(formats_rows)
@@ -438,7 +456,9 @@ def main():
     check_targets(formats_rows)
 
     if not failures:
-        print("\nOK: no anchors, no top-level alternation, unique keys, parquet in sync,")
+        print(
+            "\nOK: no anchors, no top-level alternation, unique keys, parquet in sync,"
+        )
         print("    every row's validation target declared.")
         return 0
 
