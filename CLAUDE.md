@@ -98,6 +98,25 @@ prose) but would be a forbidden false negative here, since I10 is a legitimate c
 the line, not width: a narrowing that costs no real code belongs HERE, and one that would cost even a
 single real code belongs in the caller.
 
+## THE LABEL REGISTRY: a missing row is NOT a decision
+
+`vocabulary_labels.tsv` is the ONLY place a vocabulary label is normalized — producers extract it
+verbatim (ruled 2026-08-04, `vocabulary_formats-wyf`). A lookup has **five** outcomes:
+
+- row, `mapped` → bind to `vocabulary_id`.
+- row, `unsupported` → ADJUDICATED: no OHDSI home. Drop, expected and counted.
+- row, `multi_vocabulary` → ADJUDICATED: the producer SPLITS the set (habitat rule 4).
+- row, `needs_context` → ADJUDICATED: the caller PICKS one of `candidates` from the paper's
+  context; a lookup that cannot pick must surface it, never default.
+- **NO ROW → UNADJUDICATED.** Nobody has looked. Surface and count it — an error condition that
+  needs a human, never a quiet drop.
+
+The first four are decisions; the fifth is the absence of one. A consumer that treats "not found"
+like a blank `vocabulary_id` silently loses a mappable code set and reports it identically to one
+we deliberately declined. **Never add a `status=unseen` row** — a row would mean someone looked, and
+`just lint` rejects any status outside the four. The miss report belongs in the PRODUCER; do not
+add producer code here.
+
 ## Tech Stack
 
 - Language: the PUBLISHED artifacts are data only (TSV/Parquet) — nothing a consumer loads is code.
@@ -137,7 +156,12 @@ make all     # regenerate both parquets after editing a TSV (just lint checks th
 top-level alternation** in the regexp column (both invariants were measured once and then protected
 only by memory), unique keys, parquet in sync with the TSV, and every row's validation target
 declared. It self-tests its own scanner against hand-built patterns first, because the code
-enforcing those two rules can be silently wrong like any other.
+enforcing those two rules can be silently wrong like any other. For `vocabulary_labels.tsv` it
+enforces the registry's row contract (`vocabulary_formats-yq4`, 2026-09-30): `status` is one of
+`mapped` / `unsupported` / `multi_vocabulary` / `needs_context`; `vocabulary_id` is filled IFF
+`mapped`; `candidates` IFF `needs_context`, with 2+ distinct `|`-separated ids; and every `source`
+entry parses as `<producer>:<run>[;key=count...]`, entries `|`-separated, no run twice
+(`vocabulary_formats-7dl`) — self-tested on hand-built bad rows the same way.
 
 **`just test`** replaces the hand-run snippet this section used to carry. It scores every row against
 its OWN declared target — `checks/validation_targets.json`, where each target and every deliberate
@@ -145,7 +169,10 @@ exclusion lives as data with its evidence — and fails on any in-target false n
 a stock Athena `CONCEPT.csv` and a `vocabulation` build (schema `ohdsi_vocabs`, **not** `main`, and
 the only place the OI-minted `CPT4_HCPCS` / `ICD03_*` exist), named by
 `VOCABULARY_FORMATS_ATHENA_CSV` / `VOCABULARY_FORMATS_OI_DUCKDB`. Editing a regexp means re-running
-it; adding a row means declaring its target, or lint fails.
+it; adding a row means declaring its target, or lint fails. It also checks that every id
+`vocabulary_labels.tsv` names — `vocabulary_id` and each of `candidates` — exists in the oi build's
+`vocabulary` table; with only Athena present, ids Athena lacks are reported UNVERIFIED, never
+missing, because Athena cannot hold the OI-minted ones.
 
 **Substrate paths live in an untracked `.env`, never in a tracked file** (`vocabulary_formats-6q7`,
 2026-09-30). The justfile has `set dotenv-load`; `.env.example` lists all four names
@@ -190,9 +217,12 @@ regexes to 34 rows covering the non-claims vocabularies; `vocabulary_formats-e5s
 - Make each row's **target** legible without reading the README. Today "is this row for claims or for
   the full vocabulary?" is inferable only from the variant suffix and the `notes` prose. A `target`
   column, or a documented naming convention, would make rule 1 checkable rather than remembered.
-- Rows for labels `litmine` has not met yet. The registry is a *registry*: an unseen label gets
-  appended verbatim, then mapped or left blank. `validate.py` prints unmapped labels for exactly this
-  purpose — feed its output back here.
+- Rows for labels the harvest has not met yet. The registry is **harvest-fed** (ruled 2026-08-04):
+  the producer emits unseen labels with counts → a domain agent (Odie or Vincent, per habitat
+  routing) adjudicates the status and validates the target against the concept table → the row
+  lands here with a `source` entry and **evidence in `notes`**, not an asserted target → `make all`,
+  `just lint`, `just test`. A label seen again APPENDS a `source` entry; it never overwrites one.
+  The full loop and the `source` grammar are in README's registry section.
 
 ## Domain Concepts
 

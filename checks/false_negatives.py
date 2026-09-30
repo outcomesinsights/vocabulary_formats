@@ -26,6 +26,13 @@ THERE IS NO DEFAULT PATH. Each host names its substrates in an untracked .env at
 would name one machine's layout in a tracked file and be silently wrong on every other host. An
 UNSET variable is a LOUD skip that names the variable -- this runs on every commit, and a quiet
 skip would hide a disarmed check.
+
+LABEL IDS (vocabulary_formats-yq4). The same run also checks vocabulary_labels.tsv: every id a row
+names -- its vocabulary_id, and each of its '|'-separated candidates -- must exist in the substrate.
+The oi build's vocabulary table is the authority, because it holds the stock vocabularies AND the
+OI-minted ones. With only athena on the machine, the ids athena has are verified and the rest are
+reported UNVERIFIED, never missing: athena cannot hold CPT4_HCPCS or ICD03_*, so its not having an
+id says nothing about whether the id is real.
 """
 
 import json
@@ -36,6 +43,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 FORMATS = ROOT / "vocabulary_formats.tsv"
+LABELS = ROOT / "vocabulary_labels.tsv"
 TARGETS = Path(__file__).resolve().parent / "validation_targets.json"
 
 FN_EXAMPLES = 8  # how many false negatives to print per row before truncating
@@ -230,6 +238,68 @@ def score(con, target, regexp, sources):
     return result
 
 
+def load_label_ids():
+    """[(label, column, id)] for every vocabulary_id a registry row names, candidates included."""
+    lines = LABELS.read_text(encoding="utf-8").rstrip("\n").split("\n")
+    header = lines[0].split("\t")
+    refs = []
+    for line in lines[1:]:
+        row = dict(zip(header, line.split("\t")))
+        if row["vocabulary_id"].strip():
+            refs.append((row["label"], "vocabulary_id", row["vocabulary_id"].strip()))
+        if row["candidates"].strip():
+            for vid in row["candidates"].split("|"):
+                refs.append((row["label"], "candidates", vid.strip()))
+    return refs
+
+
+def check_label_ids(con, sources):
+    """Every id vocabulary_labels.tsv names must exist in the substrate. Returns the missing refs."""
+    refs = load_label_ids()
+    rows = len({label for label, _, _ in refs})
+    oi, athena = sources["oi"], sources["athena"]
+    if oi["available"]:
+        where = f"source 'oi' ({oi['schema']}.vocabulary)"
+        rel = f"oi.{oi['schema']}.vocabulary"
+        authoritative = True
+    elif athena["available"]:
+        where = "source 'athena' (vocabulary_ids present in CONCEPT)"
+        rel = relation(athena, "athena")
+        authoritative = False
+    else:
+        print("\n  SKIP label ids: neither 'oi' nor 'athena' is available")
+        return []
+    known = {
+        r[0]
+        for r in con.execute(f"SELECT DISTINCT vocabulary_id FROM {rel}").fetchall()
+    }
+    absent = [ref for ref in refs if ref[2] not in known]
+
+    print(
+        f"\nlabel ids -- {len(refs)} ids named by {rows} rows of {LABELS.name}, against {where}"
+    )
+    if not absent:
+        print(f"  all {len(refs)} exist.")
+        return []
+    if not authoritative:
+        print(
+            f"  UNVERIFIED -- source 'oi' {oi['reason']}\n"
+            "  athena cannot hold the OI-minted ids, so its lacking these is not evidence\n"
+            "  that they are missing:"
+        )
+        for label, column, vid in absent:
+            print(f"    {vid!r}  ({column} of {label!r})")
+        return []
+    print("  MISSING -- named by the registry but not a vocabulary in the substrate:")
+    for label, column, vid in absent:
+        print(f"    {vid!r}  ({column} of {label!r})")
+    print(
+        "  A registry id that names no vocabulary binds nothing: every code set routed through that\n"
+        "  row silently vanishes. Fix the id, or the row's status."
+    )
+    return absent
+
+
 def main():
     declaration = json.loads(TARGETS.read_text(encoding="utf-8"))
     regexps, order = load_rows()
@@ -253,7 +323,8 @@ def main():
         print(
             "\nSKIPPED: no OHDSI concept substrate on this machine, so there is nothing to score\n"
             "         false negatives against. This is a skip, not a pass -- the rows are\n"
-            "         UNVALIDATED. Set one of these in .env (see .env.example) and re-run:\n"
+            "         UNVALIDATED, and so are the ids vocabulary_labels.tsv names. Set one of\n"
+            "         these in .env (see .env.example) and re-run:\n"
             + "".join(
                 f"           {declaration['sources'][n]['env']}\n" for n in sources
             )
@@ -268,7 +339,6 @@ def main():
         return 1
 
     results = [score(con, targets[vid], regexps[vid], sources) for vid in order]
-    con.close()
 
     print(f"\n  {'row':<28} {'codes tested':>14}  {'FN':>6}")
     for r in results:
@@ -322,7 +392,10 @@ def main():
         print(f"{len(skipped)} row(s) UNVALIDATED for want of a substrate: ")
         for r in skipped:
             print(f"  {r['vocabulary_id']}: {r['skipped']}")
-    return 1 if (offenders or errors) else 0
+
+    missing_ids = check_label_ids(con, sources)
+    con.close()
+    return 1 if (offenders or errors or missing_ids) else 0
 
 
 if __name__ == "__main__":

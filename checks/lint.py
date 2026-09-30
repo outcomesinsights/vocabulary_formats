@@ -13,6 +13,10 @@ Every check here was previously protected by nothing but memory:
   parquet in sync   TSV and parquet are BOTH the published interface (vocabulary_formats-t5u)
   columns / tabs    the file is read as TSV by every consumer
   targets declared  a row with no entry in validation_targets.json is silently never validated
+  label rows        vocabulary_labels: status is a known value, vocabulary_id is filled IFF mapped,
+                    candidates IFF needs_context (2+ distinct ids), and every `source` entry
+                    parses. Consumers in two languages branch on status, so an unknown value is a
+                    row that silently falls through every branch (vocabulary_formats-yq4, -7dl).
 
 Regexps are compiled with Python's `re`. The column is documented as PCRE, but the live consumers
 (litmine, codesistant) are Python, so Python is the compiler that decides whether a row works.
@@ -30,8 +34,40 @@ TARGETS = Path(__file__).resolve().parent / "validation_targets.json"
 
 TABLES = {
     FORMATS: ["vocabulary_id", "regexp", "context", "use", "source", "notes"],
-    LABELS: ["label", "vocabulary_id", "status", "source", "notes"],
+    LABELS: ["label", "vocabulary_id", "candidates", "status", "source", "notes"],
 }
+
+# vocabulary_labels.tsv. The status set is CLOSED: a consumer branches on it, and a value it does
+# not know is a row it silently drops. There is deliberately no `unseen` status -- a label nobody
+# has adjudicated has NO ROW, because a row would mean someone looked (vocabulary_formats-wyf).
+LABEL_STATUSES = {"mapped", "unsupported", "multi_vocabulary", "needs_context"}
+
+# '|' means LIST everywhere in vocabulary_labels.tsv: the ids in `candidates` and the entries in
+# `source` (ruled 2026-09-30).
+LIST_DELIMITER = "|"
+
+# One `source` ENTRY: <producer>:<run>, then optional ;key=count pairs whose counts are per run.
+# e.g. litmine:pilot-2026-07;sets=117;papers=10  or  code_collector:vocabulary_labels.py@1a2b3c4
+SOURCE_ENTRY = re.compile(
+    r"(?P<producer>[A-Za-z0-9_.-]+):(?P<run>[^;|\s]+)(?P<counts>(?:;[a-z_]+=[0-9]+)*)"
+)
+
+LABEL_RULE = """
+    RULE: a registry row states ONE adjudicated decision, and its columns must agree with it:
+      mapped            vocabulary_id filled, candidates blank
+      unsupported       both blank -- no OHDSI home as of now
+      multi_vocabulary  both blank -- the producer SPLITS the set (whether candidates may list
+                        its components is undecided, vfm-bmg)
+      needs_context     vocabulary_id blank, candidates = 2+ distinct '|'-separated ids; the
+                        caller PICKS one per paper
+    A label nobody has adjudicated gets NO ROW -- never a status of its own.
+"""
+
+SOURCE_RULE = """
+    RULE: `source` is '|'-separated ENTRIES, each <producer>:<run>[;key=count...], e.g.
+    litmine:pilot-2026-07;sets=117;papers=10. A later run APPENDS an entry and never overwrites
+    one, and its counts are that run's alone -- so one run appearing twice double-counts it.
+"""
 
 ANCHOR_RULE = """
     RULE: the regexp column carries NO boundary. The anchors were stripped from all 34 rows on
@@ -174,6 +210,149 @@ def selftest_scanner():
                 "    RULE: the scanner is what enforces the two invariants that nothing else\n"
                 "    protects. A scanner that is wrong reports green over a broken table, so it is\n"
                 "    checked against hand-computed answers every time the gate runs.",
+            )
+
+
+def source_problems(source):
+    """Why a `source` value breaks the entry grammar, as a list of messages (empty = clean)."""
+    if not source.strip():
+        return ["source is empty; every row records where its label was observed"]
+    problems, runs = [], set()
+    for entry in source.split(LIST_DELIMITER):
+        m = SOURCE_ENTRY.fullmatch(entry)
+        if not m:
+            problems.append(
+                f"source entry {entry!r} is not <producer>:<run>[;key=count...]"
+            )
+            continue
+        keys = [pair.split("=")[0] for pair in m["counts"].split(";")[1:]]
+        if len(keys) != len(set(keys)):
+            problems.append(f"source entry {entry!r} repeats a count key")
+        run = (m["producer"], m["run"])
+        if run in runs:
+            problems.append(f"source names run {':'.join(run)!r} twice")
+        runs.add(run)
+    return problems
+
+
+def label_row_problems(row):
+    """What is wrong with one vocabulary_labels row, as [(column, message)] (empty = clean)."""
+    problems = [("source", msg) for msg in source_problems(row["source"])]
+    status = row["status"]
+    if status not in LABEL_STATUSES:
+        # The other columns are judged RELATIVE to status; against an unknown one they would only
+        # repeat this complaint.
+        problems.append(
+            ("status", f"status {status!r} is not one of {sorted(LABEL_STATUSES)!r}")
+        )
+        return problems
+
+    vid = row["vocabulary_id"].strip()
+    if (status == "mapped") != bool(vid):
+        problems.append(
+            (
+                "vocabulary_id",
+                f"status {status!r} with vocabulary_id {vid!r}: vocabulary_id is filled "
+                "IFF status is mapped",
+            )
+        )
+
+    candidates = row["candidates"]
+    if status != "needs_context":
+        if candidates.strip():
+            problems.append(
+                (
+                    "candidates",
+                    f"status {status!r} with candidates {candidates!r}: candidates is "
+                    "filled IFF status is needs_context",
+                )
+            )
+        return problems
+    ids = candidates.split(LIST_DELIMITER)
+    if any(not i or i != i.strip() for i in ids):
+        problems.append(
+            ("candidates", f"candidates {candidates!r} has an empty or padded id")
+        )
+    elif len(ids) != len(set(ids)):
+        problems.append(("candidates", f"candidates {candidates!r} repeats an id"))
+    elif len(ids) < 2:
+        problems.append(
+            (
+                "candidates",
+                f"candidates {candidates!r} names fewer than 2 ids -- one id is a mapping",
+            )
+        )
+    return problems
+
+
+# Hand-built rows with hand-computed answers, checked every run: these checks decide whether a
+# consumer can branch on a row, so they get the scanner's treatment.
+# (vocabulary_id, candidates, status, source, the columns that must be flagged)
+_OK_SOURCE = "litmine:pilot-2026-07;sets=117;papers=10"
+LABEL_SELFTEST = [
+    ("ICD10CM", "", "mapped", _OK_SOURCE, []),
+    ("", "", "unsupported", _OK_SOURCE, []),
+    ("", "", "multi_vocabulary", _OK_SOURCE, []),
+    ("", "ICD10CM|ICD10", "needs_context", _OK_SOURCE, []),
+    ("", "", "unseen", _OK_SOURCE, ["status"]),  # no row for the unadjudicated, ever
+    ("ICD10CM", "", "Mapped", _OK_SOURCE, ["status"]),  # the set is case-sensitive
+    ("", "", "mapped", _OK_SOURCE, ["vocabulary_id"]),
+    ("ICD10", "", "unsupported", _OK_SOURCE, ["vocabulary_id"]),
+    ("ICD10", "ICD10CM|ICD10", "needs_context", _OK_SOURCE, ["vocabulary_id"]),
+    ("", "", "needs_context", _OK_SOURCE, ["candidates"]),
+    ("", "ICD10", "needs_context", _OK_SOURCE, ["candidates"]),  # one id is a mapping
+    ("", "ICD10|ICD10CM|ICD10", "needs_context", _OK_SOURCE, ["candidates"]),
+    ("", "ICD10||ICD10CM", "needs_context", _OK_SOURCE, ["candidates"]),
+    ("", "ICD10| ICD10CM", "needs_context", _OK_SOURCE, ["candidates"]),
+    ("", "ICD9CM|ICD10CM", "multi_vocabulary", _OK_SOURCE, ["candidates"]),  # vfm-bmg
+    ("ICD10CM", "ICD10CM|ICD10", "mapped", _OK_SOURCE, ["candidates"]),
+    ("ICD10CM", "", "mapped", "", ["source"]),
+    ("ICD10CM", "", "mapped", "litmine pilot 2026-07", ["source"]),
+    ("ICD10CM", "", "mapped", "litmine:pilot;sets=many", ["source"]),
+    ("ICD10CM", "", "mapped", "litmine:pilot;sets=1;sets=2", ["source"]),
+    ("ICD10CM", "", "mapped", "litmine:pilot;sets=1|litmine:pilot;sets=2", ["source"]),
+    ("ICD10CM", "", "mapped", _OK_SOURCE + "|", ["source"]),
+    ("ICD10CM", "", "mapped", _OK_SOURCE + ",code_collector:h1", ["source"]),
+    (
+        "ICD10CM",
+        "",
+        "mapped",
+        "code_collector:vocabulary_labels.py@1a2b3c4|"
+        "code_collector:harvest-2026-09-10;sets=267;papers=84",
+        [],
+    ),
+]
+
+
+def selftest_labels():
+    for vid, candidates, status, source, want in LABEL_SELFTEST:
+        row = {
+            "label": "selftest",
+            "vocabulary_id": vid,
+            "candidates": candidates,
+            "status": status,
+            "source": source,
+            "notes": "",
+        }
+        got = sorted(column for column, _ in label_row_problems(row))
+        if got != sorted(want):
+            fail(
+                "checks/lint.py label_row_problems",
+                f"self-test failed on vocabulary_id={vid!r} candidates={candidates!r} "
+                f"status={status!r} source={source!r}: flagged {got!r}, want {sorted(want)!r}",
+                "    RULE: these checks decide whether a registry row is one a consumer can\n"
+                "    branch on. Checks that are wrong report green over a broken table, so they\n"
+                "    are checked against hand-computed answers every time the gate runs.",
+            )
+
+
+def check_labels(rows):
+    for lineno, row in rows:
+        for column, message in label_row_problems(row):
+            fail(
+                f"{LABELS.name}:{lineno} {row['label']!r}",
+                message,
+                SOURCE_RULE if column == "source" else LABEL_RULE,
             )
 
 
@@ -436,6 +615,8 @@ def main():
     print(f"lint: {ROOT}")
     selftest_scanner()
     print(f"  scan_pattern self-test: {len(SCANNER_SELFTEST)} hand-built patterns")
+    selftest_labels()
+    print(f"  label_row_problems self-test: {len(LABEL_SELFTEST)} hand-built rows")
     malformed = set()
     rows_by_table = {}
     for path in (FORMATS, LABELS):
@@ -452,6 +633,7 @@ def main():
     print(f"  regexps that compile as \\A(?:...)\\z: {compiled}/{len(formats_rows)}")
     check_unique(formats_rows, "vocabulary_id", FORMATS.name)
     check_unique(labels_rows, "label", LABELS.name)
+    check_labels(labels_rows)
     check_parquet_in_sync(malformed)
     check_targets(formats_rows)
 
@@ -459,7 +641,7 @@ def main():
         print(
             "\nOK: no anchors, no top-level alternation, unique keys, parquet in sync,"
         )
-        print("    every row's validation target declared.")
+        print("    every row's validation target declared, every label row consistent.")
         return 0
 
     print(f"\nFAILED: {len(failures)} problem(s)\n")

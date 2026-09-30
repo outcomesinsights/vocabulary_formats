@@ -59,16 +59,23 @@ that hands you drift you cannot see.
   `concept_code` values it claims to cover, and every deliberate exclusion is named with its
   evidence in `checks/validation_targets.json`. `just test` enforces it.
 - **Unique keys**: `vocabulary_id` in `vocabulary_formats`, `label` in `vocabulary_labels`.
-- **A blank `vocabulary_id` in `vocabulary_labels` is load-bearing**, not missing data — it means
-  the label resolves to nothing in our substrate, and consumers gate on it.
+- **`status` in `vocabulary_labels` is a CLOSED set of four values, and it is what you branch
+  on.** A blank `vocabulary_id` is load-bearing, not missing data — but three statuses leave it
+  blank for three different reasons, so never gate on the blank alone. `vocabulary_id` is filled
+  exactly when `status` is `mapped`, `candidates` exactly when it is `needs_context`; `just lint`
+  enforces both. Every id either column names exists in our substrate; `just test` enforces that.
+  A label with **no row** is not a fifth status: it is *unadjudicated*, and you must surface it,
+  never drop it — see *Looking a label up* below.
 
 ### What changes under you
 
 - **Rows are added** to both tables, and a `regexp` may be **narrowed**: still complete for its
   declared target, but admitting fewer non-codes than the version you last read.
 - **Columns may be added.** Read columns by NAME, never by position.
-- **`source` and `notes` are prose for humans.** They carry per-row measurements and reasons; do
-  not parse them.
+- **`notes`, and `source` in `vocabulary_formats`, are prose for humans.** They carry per-row
+  measurements and reasons; do not parse them. The exception is `source` in `vocabulary_labels`,
+  which has a pinned grammar that `just lint` parses (see that table's columns below); a row
+  seen again gains an entry there, so expect it to grow.
 
 ### Retired artifacts
 
@@ -197,30 +204,131 @@ its vocabulary _X_ — which `vocabulary_id` is that?"** The format regexps say 
 like; this says which vocabulary a label refers to. The two join on `vocabulary_id`.
 
 It is a **registry, not just a mapping**. Every label encountered in the wild is recorded *verbatim* —
-the verbatim string is the row key, so provenance is never lost — and each row resolves to either a
-`vocabulary_id` in our substrate or a **blank**. A blank is load-bearing: it makes an unsupported
-vocabulary *visible* instead of letting a code set silently vanish. Consumers use the blanks as an
-extract-but-don't-produce gate.
+the verbatim string is the row key, so provenance is never lost — and each row records one
+adjudicated decision in `status`: a `vocabulary_id` in our substrate, or a **blank** with the reason
+for it. A blank is load-bearing: it makes an unsupported vocabulary *visible* instead of letting a
+code set silently vanish. But a blank is not one answer — read `status` to learn which.
 
 Columns:
 
 - `label` — the vocabulary name exactly as it appeared in the source. Never normalized; lookups
   should normalize case/whitespace on the consumer side.
+
 - `vocabulary_id` — the target in our substrate, which **includes OI supplemental vocabularies**
-  (e.g. `CPT4_HCPCS`), not just stock OHDSI ids. Blank when unresolved. Blank in the TSV reads back
-  as NULL from the Parquet; both mean the same thing.
-- `status` — why the row is where it is. Three values, and the distinction matters because two of
-  them share a blank `vocabulary_id` for entirely different reasons:
+  (e.g. `CPT4_HCPCS`), not just stock OHDSI ids. Filled if and only if `status` is `mapped`. Blank
+  in the TSV reads back as NULL from the Parquet; both mean the same thing.
+
+- `candidates` — for a `needs_context` row only, the vocabularies the label could mean, as
+  `|`-separated `vocabulary_id`s (e.g. `ICD10CM|ICD10|ICD10PCS|ICD10GM|ICD10CN`): at least two,
+  none repeated, each one present in our substrate. Blank on every other row. Machine-readable, so
+  split it on `|`; do not parse `notes` for it. (Whether `multi_vocabulary` rows will also list
+  their components here is deliberately undecided — seed `vfm-bmg`. Today they are blank.)
+
+- `status` — why the row is where it is. A CLOSED set of four values; a value outside it is a bug,
+  and `just lint` fails on one. The distinction matters because three of them share a blank
+  `vocabulary_id` for entirely different reasons:
+
   - `mapped` — resolves to a `vocabulary_id`.
   - `unsupported` — not in OHDSI or our supplementals *as of now*. Revisit when a release adds it.
-  - `multi_vocabulary` — the label names more than one vocabulary. The remedy is a producer-side
-    **split** into per-vocabulary code sets, not a single mapping and not waiting on OHDSI.
-- `source` — where the label was observed, with counts.
-- `notes` — anything a future reader needs so they don't "fix" a deliberate decision.
+  - `multi_vocabulary` — the label names SEVERAL vocabularies at once. The remedy is a
+    producer-side **split** into per-vocabulary code sets, not a single mapping and not waiting on
+    OHDSI.
+  - `needs_context` — the label names a family; which vocabulary it means is decided per paper from
+    `candidates`. The remedy is a per-paper resolver that **picks** one of them — not a split, and
+    not a default. A bare `ICD-10` is the example: WHO `ICD10` and US `ICD10CM` have disjoint
+    concept_ids, papers print either under that label, and so no single mapping is right for every
+    paper (ruled 2026-09-30). Conflating this with `multi_vocabulary` would send a set that needs a
+    pick to a splitter.
+
+- `source` — where the label was observed, as provenance a machine can read (ruled 2026-09-30).
+  The value is one or more **entries** separated by `|` — the same list delimiter as `candidates`,
+  so `|` means *list* everywhere in this table. Each entry is:
+
+  ```
+  <producer>:<run>[;<key>=<count>]...
+  ```
+
+  - `<producer>` — the tool that saw the label: letters, digits, `_`, `.`, `-` (`litmine`,
+    `code_collector`).
+  - `<run>` — which run of it: anything without `;`, `|` or whitespace (`pilot-2026-07`,
+    `harvest-2026-09-10`, `vocabulary_labels.py@<sha>` for a row moved from a producer's code).
+  - `;<key>=<count>` — optional, repeatable, keys unique within the entry, counts non-negative
+    integers **for that run alone** (`sets=117;papers=10`).
+
+  e.g. `litmine:pilot-2026-07;sets=117;papers=10|code_collector:harvest-2026-09-10;sets=267;papers=84`.
+  **A later run APPENDS an entry and never overwrites one**, and no run appears twice on a row —
+  counts are per run, so a repeated run would double-count it. `just lint` parses every entry of
+  every row and fails on one that does not fit.
+
+- `notes` — anything a future reader needs so they don't "fix" a deliberate decision, and **the
+  evidence for the row** — how its target was checked, not just what the target is (see the intake
+  loop below).
 
 Note that a mapping may deliberately **widen**: `CPT` maps to `CPT4_HCPCS`, which covers CPT *and*
 HCPCS. That is correct for binding — a CPT code resolves in the hybrid — and costs nothing, because
 the verbatim label stays the row key.
+
+### Looking a label up: five outcomes, and a missing row is not a decision
+
+Producers extract the vocabulary label **verbatim**, with no enum at extraction time, and this
+registry is the only place a label is normalized (ruled 2026-08-04). So a lookup has **five**
+outcomes, not four — the four statuses, plus the label having no row at all:
+
+| Lookup result           | What it is                                                              | What the consumer does                                                                                                                                              |
+| ----------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| row, `mapped`           | **ADJUDICATED.** Resolves to one vocabulary.                            | Bind the code set to `vocabulary_id`.                                                                                                                               |
+| row, `unsupported`      | **ADJUDICATED.** We looked; it has no OHDSI home as of now.             | Drop the set — an expected, counted drop.                                                                                                                           |
+| row, `multi_vocabulary` | **ADJUDICATED.** The label names several vocabularies at once.          | Split the set into per-vocabulary sets (habitat rule 4).                                                                                                            |
+| row, `needs_context`    | **ADJUDICATED.** The label names a family; the paper decides which one. | Pick one of `candidates` using the paper's own context. A lookup that cannot pick must **surface** the set as undecided — never default to a candidate, never drop. |
+| **no row**              | **UNADJUDICATED.** Nobody has ever looked at this label.                | **Surface and count it.** It is an error condition that needs a human, never a quiet drop.                                                                          |
+
+The first four are decisions. The fifth is the *absence* of one, and it must never be treated like
+a blank `vocabulary_id`: a consumer that drops "not found" the way it drops `unsupported` silently
+loses a code set that may be perfectly mappable, and reports it identically to one we deliberately
+declined. That is the omission failure habitat rule 7 names as the primary risk — and with verbatim
+extraction across thousands of papers, the unseen label is the **common** case, not the edge.
+
+**The consumer contract, plainly:** a label lookup returns either *found + decision* or *unseen*.
+*Unseen* is an error condition requiring a human. The remedy is a new row here, never a
+consumer-side guess.
+
+There is deliberately **no `unseen` status**, and there never will be: a row means someone looked.
+`just lint` rejects any status outside the four. Emitting the report of unseen labels is the
+**producer's** job; this repository holds data, not that mechanism.
+
+### The intake loop: how an unseen label becomes a row
+
+Since the 2026-08-04 ruling — *"extract vocabulary as it is written in the paper and we will use
+that information to form a comprehensive mapping in vocabulary_formats"* — this table is a
+**product the harvest keeps feeding**, not a list written once. A label travels:
+
+1. **The producer emits the unseen labels, with counts.** A harvest (litmine, code_collector)
+   reports every label its lookup returned *no row* for, with how many code sets and papers carried
+   it in that run. This is the producer's code, never this repository's.
+2. **A domain agent adjudicates it.** Per habitat routing, the OHDSI-vocabulary specialist (Odie)
+   or the vocabulary-pipeline specialist (Vincent) decides the status and authors the target —
+   `vocabulary_id`, `candidates`, or a blank with its reason — and **validates it against the real
+   concept table**.
+3. **The row lands here, with provenance and evidence.** `label` verbatim; `source` gets an entry
+   for the run that surfaced it (or, for a label already on a row, an entry is **appended** to that
+   row's `source`); `notes` records the evidence.
+4. **`make all` regenerates the parquet**, and `just lint` and `just test` must pass: lint checks the
+   row's shape and its `source` grammar; test checks that every id it names exists in the substrate.
+
+**`notes` must carry EVIDENCE, not an assertion.** A target stated without being checked against
+real `concept_code`s is a guess. The existing rows set the bar:
+
+- `NHIS (Korean National Health Insurance Service) procedure code` → `EDI`: *"52 of the 99 distinct
+  pilot codes (HA401, HA402, ...) exact-match EDI concept_codes and the rest share its format."*
+- `DRG` → `DRG`: *"all 26 distinct pilot codes exact-match DRG concept_codes."*
+- An `unsupported` row names what was checked and came up empty: *"Checked against EDI, KCD7, KDC,
+  KNHIS and Korean Revenue Code - no match."*
+
+Exact-matching code strings is evidence, not proof — the Japanese extent-of-disease row records
+that its codes collide 4/4 with NAACCR and DRG by accident. Resolve a label by what it *means*, and
+use the concept table to confirm it. For a row moved here from a producer's own code (for example
+code_collector's label tables), the ruling that decided it counts as the evidence: cite it, with its
+date.
 
 ## What "never reject a real code" is measured against
 
@@ -291,9 +399,11 @@ code.
 
 ```bash
 just lint    # THE GATE. Structural: regexps compile, no anchors, no top-level alternation,
-             # unique keys, parquet in sync with the TSV, every row's target declared.
+             # unique keys, parquet in sync with the TSV, every row's target declared,
+             # every vocabulary_labels row's status/vocabulary_id/candidates consistent.
              # No database, no network, seconds — run it before every commit.
-just test    # The false-negative harness above. Needs an OHDSI concept table and skips
+just test    # The false-negative harness above, plus: every id vocabulary_labels names
+             # exists in the substrate. Needs an OHDSI concept table and skips
              # cleanly, with a message, when there is not one on the machine.
 just prose   # The prose-adversary report. What each row admits from real running text.
              # Never fails; score a candidate beside the row it would replace with
