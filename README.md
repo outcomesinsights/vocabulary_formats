@@ -15,7 +15,7 @@ Sometimes it's easier to see if a code "looks" like a valid code, hence these re
 | Published artifact                                     | Answers                                                                         |
 | ------------------------------------------------------ | ------------------------------------------------------------------------------- |
 | `vocabulary_formats.tsv`, `vocabulary_formats.parquet` | *does this string look like a code of vocabulary X?* — 34 rows                  |
-| `vocabulary_labels.tsv`, `vocabulary_labels.parquet`   | *a document called its vocabulary X — which `vocabulary_id` is that?* — 22 rows |
+| `vocabulary_labels.tsv`, `vocabulary_labels.parquet`   | *a document called its vocabulary X — which `vocabulary_id` is that?* — 79 rows |
 
 They sit at the repository root and keep those names. Each `.parquet` is generated from its `.tsv`
 by `make all` and carries the same rows and the same columns, so take whichever your consumer reads
@@ -58,7 +58,9 @@ that hands you drift you cannot see.
 - **No false negative inside a row's declared target.** Every row is scored against the real
   `concept_code` values it claims to cover, and every deliberate exclusion is named with its
   evidence in `checks/validation_targets.json`. `just test` enforces it.
-- **Unique keys**: `vocabulary_id` in `vocabulary_formats`, `label` in `vocabulary_labels`.
+- **Unique keys**: `vocabulary_id` in `vocabulary_formats`; `label` in `vocabulary_labels`, and
+  unique **after the label fold**, not merely byte for byte — so a lookup that applies the fold
+  can never find two rows. `just lint` enforces it.
 - **`status` in `vocabulary_labels` is a CLOSED set of four values, and it is what you branch
   on.** A blank `vocabulary_id` is load-bearing, not missing data — but three statuses leave it
   blank for three different reasons, so never gate on the blank alone. `vocabulary_id` is filled
@@ -211,8 +213,9 @@ code set silently vanish. But a blank is not one answer — read `status` to lea
 
 Columns:
 
-- `label` — the vocabulary name exactly as it appeared in the source. Never normalized; lookups
-  should normalize case/whitespace on the consumer side.
+- `label` — the vocabulary name as it appeared in the source, one row per spelling the label fold
+  (below) keeps distinct. Never normalized in the file; a lookup applies **the label fold** to both
+  sides and compares the results.
 
 - `vocabulary_id` — the target in our substrate, which **includes OI supplemental vocabularies**
   (e.g. `CPT4_HCPCS`), not just stock OHDSI ids. Filled if and only if `status` is `mapped`. Blank
@@ -267,6 +270,30 @@ Columns:
 Note that a mapping may deliberately **widen**: `CPT` maps to `CPT4_HCPCS`, which covers CPT *and*
 HCPCS. That is correct for binding — a CPT code resolves in the hybrid — and costs nothing, because
 the verbatim label stays the row key.
+
+### The label fold: how a lookup compares labels
+
+A lookup does not compare labels byte for byte. It **folds** the label it was handed and every row's
+`label`, then compares the folded strings. The fold is part of the contract (ruled 2026-09-30):
+implement exactly these three steps, in this order, and nothing else.
+
+1. **Dashes are made uniform, never removed.** Every character in Unicode general category `Pd`
+   (dash punctuation: `-`, U+2010 hyphen, U+2011 non-breaking hyphen, en and em dashes, …), plus
+   U+2212 MINUS SIGN, becomes an ASCII `-`. **U+00AD SOFT HYPHEN is deliberately not a dash**: it is
+   an invisible line-break hint, and turning it into `-` would invent a dash the author never
+   printed. It is left as it is.
+2. **Whitespace is collapsed.** Whitespace means any Unicode whitespace, so U+00A0 NO-BREAK SPACE
+   counts. Each run becomes one space, the ends are trimmed, and whitespace **adjacent to a dash**
+   is dropped, so `ICD - 10` folds to `icd-10`. Spaces anywhere else stay: `ICD 10 CM`,
+   `ICD-10-CM` and `ICD10CM` are three different labels, and each has its own row.
+3. **Case is ignored**, by Unicode case folding (Python `str.casefold()`, Ruby
+   `String#downcase(:fold)`).
+
+Stripping dashes and spaces altogether was considered and **rejected**: it would merge spellings
+that are different labels. `checks/lint.py` holds the reference implementation (`fold_label`,
+self-tested on hand-built labels every run), and `just lint` fails if two rows fold to the same
+string, because that would be one lookup key with two answers. So a new spelling the fold already
+covers gets no row of its own. Append a `source` entry to the row it folds onto.
 
 ### Looking a label up: five outcomes, and a missing row is not a decision
 
@@ -400,7 +427,8 @@ code.
 ```bash
 just lint    # THE GATE. Structural: regexps compile, no anchors, no top-level alternation,
              # unique keys, parquet in sync with the TSV, every row's target declared,
-             # every vocabulary_labels row's status/vocabulary_id/candidates consistent.
+             # every vocabulary_labels row's status/vocabulary_id/candidates consistent,
+             # every label unique after the label fold.
              # No database, no network, seconds — run it before every commit.
 just test    # The false-negative harness above, plus: every id vocabulary_labels names
              # exists in the substrate. Needs an OHDSI concept table and skips
