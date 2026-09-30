@@ -137,7 +137,11 @@ make all     # regenerate both parquets after editing a TSV (just lint checks th
 top-level alternation** in the regexp column (both invariants were measured once and then protected
 only by memory), unique keys, parquet in sync with the TSV, and every row's validation target
 declared. It self-tests its own scanner against hand-built patterns first, because the code
-enforcing those two rules can be silently wrong like any other.
+enforcing those two rules can be silently wrong like any other. For `vocabulary_labels.tsv` it
+enforces the registry's row contract (`vocabulary_formats-yq4`, 2026-09-30): `status` is one of
+`mapped` / `unsupported` / `multi_vocabulary` / `needs_context`; `vocabulary_id` is filled IFF
+`mapped`; `candidates` IFF `needs_context`, with 2+ distinct `|`-separated ids — self-tested on
+hand-built bad rows the same way.
 
 **`just test`** replaces the hand-run snippet this section used to carry. It scores every row against
 its OWN declared target — `checks/validation_targets.json`, where each target and every deliberate
@@ -145,7 +149,10 @@ exclusion lives as data with its evidence — and fails on any in-target false n
 a stock Athena `CONCEPT.csv` and a `vocabulation` build (schema `ohdsi_vocabs`, **not** `main`, and
 the only place the OI-minted `CPT4_HCPCS` / `ICD03_*` exist), named by
 `VOCABULARY_FORMATS_ATHENA_CSV` / `VOCABULARY_FORMATS_OI_DUCKDB`. Editing a regexp means re-running
-it; adding a row means declaring its target, or lint fails.
+it; adding a row means declaring its target, or lint fails. It also checks that every id
+`vocabulary_labels.tsv` names — `vocabulary_id` and each of `candidates` — exists in the oi build's
+`vocabulary` table; with only Athena present, ids Athena lacks are reported UNVERIFIED, never
+missing, because Athena cannot hold the OI-minted ones.
 
 **Substrate paths live in an untracked `.env`, never in a tracked file** (`vocabulary_formats-6q7`,
 2026-09-30). The justfile has `set dotenv-load`; `.env.example` lists all four names

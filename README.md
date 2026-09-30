@@ -59,8 +59,11 @@ that hands you drift you cannot see.
   `concept_code` values it claims to cover, and every deliberate exclusion is named with its
   evidence in `checks/validation_targets.json`. `just test` enforces it.
 - **Unique keys**: `vocabulary_id` in `vocabulary_formats`, `label` in `vocabulary_labels`.
-- **A blank `vocabulary_id` in `vocabulary_labels` is load-bearing**, not missing data — it means
-  the label resolves to nothing in our substrate, and consumers gate on it.
+- **`status` in `vocabulary_labels` is a CLOSED set of four values, and it is what you branch
+  on.** A blank `vocabulary_id` is load-bearing, not missing data — but three statuses leave it
+  blank for three different reasons, so never gate on the blank alone. `vocabulary_id` is filled
+  exactly when `status` is `mapped`, `candidates` exactly when it is `needs_context`; `just lint`
+  enforces both. Every id either column names exists in our substrate; `just test` enforces that.
 
 ### What changes under you
 
@@ -197,24 +200,37 @@ its vocabulary _X_ — which `vocabulary_id` is that?"** The format regexps say 
 like; this says which vocabulary a label refers to. The two join on `vocabulary_id`.
 
 It is a **registry, not just a mapping**. Every label encountered in the wild is recorded *verbatim* —
-the verbatim string is the row key, so provenance is never lost — and each row resolves to either a
-`vocabulary_id` in our substrate or a **blank**. A blank is load-bearing: it makes an unsupported
-vocabulary *visible* instead of letting a code set silently vanish. Consumers use the blanks as an
-extract-but-don't-produce gate.
+the verbatim string is the row key, so provenance is never lost — and each row records one
+adjudicated decision in `status`: a `vocabulary_id` in our substrate, or a **blank** with the reason
+for it. A blank is load-bearing: it makes an unsupported vocabulary *visible* instead of letting a
+code set silently vanish. But a blank is not one answer — read `status` to learn which.
 
 Columns:
 
 - `label` — the vocabulary name exactly as it appeared in the source. Never normalized; lookups
   should normalize case/whitespace on the consumer side.
 - `vocabulary_id` — the target in our substrate, which **includes OI supplemental vocabularies**
-  (e.g. `CPT4_HCPCS`), not just stock OHDSI ids. Blank when unresolved. Blank in the TSV reads back
-  as NULL from the Parquet; both mean the same thing.
-- `status` — why the row is where it is. Three values, and the distinction matters because two of
-  them share a blank `vocabulary_id` for entirely different reasons:
+  (e.g. `CPT4_HCPCS`), not just stock OHDSI ids. Filled if and only if `status` is `mapped`. Blank
+  in the TSV reads back as NULL from the Parquet; both mean the same thing.
+- `candidates` — for a `needs_context` row only, the vocabularies the label could mean, as
+  `|`-separated `vocabulary_id`s (e.g. `ICD10CM|ICD10|ICD10PCS|ICD10GM|ICD10CN`): at least two,
+  none repeated, each one present in our substrate. Blank on every other row. Machine-readable, so
+  split it on `|`; do not parse `notes` for it. (Whether `multi_vocabulary` rows will also list
+  their components here is deliberately undecided — seed `vfm-bmg`. Today they are blank.)
+- `status` — why the row is where it is. A CLOSED set of four values; a value outside it is a bug,
+  and `just lint` fails on one. The distinction matters because three of them share a blank
+  `vocabulary_id` for entirely different reasons:
   - `mapped` — resolves to a `vocabulary_id`.
   - `unsupported` — not in OHDSI or our supplementals *as of now*. Revisit when a release adds it.
-  - `multi_vocabulary` — the label names more than one vocabulary. The remedy is a producer-side
-    **split** into per-vocabulary code sets, not a single mapping and not waiting on OHDSI.
+  - `multi_vocabulary` — the label names SEVERAL vocabularies at once. The remedy is a
+    producer-side **split** into per-vocabulary code sets, not a single mapping and not waiting on
+    OHDSI.
+  - `needs_context` — the label names a family; which vocabulary it means is decided per paper from
+    `candidates`. The remedy is a per-paper resolver that **picks** one of them — not a split, and
+    not a default. A bare `ICD-10` is the example: WHO `ICD10` and US `ICD10CM` have disjoint
+    concept_ids, papers print either under that label, and so no single mapping is right for every
+    paper (ruled 2026-09-30). Conflating this with `multi_vocabulary` would send a set that needs a
+    pick to a splitter.
 - `source` — where the label was observed, with counts.
 - `notes` — anything a future reader needs so they don't "fix" a deliberate decision.
 
@@ -291,9 +307,11 @@ code.
 
 ```bash
 just lint    # THE GATE. Structural: regexps compile, no anchors, no top-level alternation,
-             # unique keys, parquet in sync with the TSV, every row's target declared.
+             # unique keys, parquet in sync with the TSV, every row's target declared,
+             # every vocabulary_labels row's status/vocabulary_id/candidates consistent.
              # No database, no network, seconds — run it before every commit.
-just test    # The false-negative harness above. Needs an OHDSI concept table and skips
+just test    # The false-negative harness above, plus: every id vocabulary_labels names
+             # exists in the substrate. Needs an OHDSI concept table and skips
              # cleanly, with a message, when there is not one on the machine.
 just prose   # The prose-adversary report. What each row admits from real running text.
              # Never fails; score a candidate beside the row it would replace with
