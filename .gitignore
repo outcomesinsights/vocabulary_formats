@@ -6,6 +6,9 @@
 # Diagnostic logs from `just lint` / `just test` — local artifacts, not repo history
 claude_stuff/
 
+# Per-host substrate/corpus paths for `just test` / `just prose` -- the names are in .env.example
+.env
+
 # Python bytecode from `just prose` importing the harness next door
 __pycache__/
 

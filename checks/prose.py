@@ -26,7 +26,6 @@ for -- score a candidate beside the row it would replace without touching the ta
 Then re-run `just test`: a narrowing that costs even one in-target code is a bug, not a trade.
 """
 
-import os
 import re
 import sys
 from pathlib import Path
@@ -34,21 +33,19 @@ from xml.etree import ElementTree
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from false_negatives import bound, load_rows  # noqa: E402  (path set above)
+from false_negatives import bound, env_path, load_rows, unset_reason  # noqa: E402  (path set above)
 
 ROOT = Path(__file__).resolve().parent.parent
 
 EXAMPLES = 10  # sample tokens printed per row, per corpus
 
 # Corpora, as data. Both are large local artifacts that not every machine has; a missing one SKIPS,
-# exactly as a missing concept substrate does in false_negatives.py.
+# exactly as a missing concept substrate does in false_negatives.py. There is no default path: each
+# host names its corpora in its untracked .env (see .env.example), and an unset variable is a loud
+# skip that names it.
 CORPORA = {
     "tabular": {
         "kind": "duckdb",
-        "default_path": (
-            "/home/ryan/projects/outins/one_offs/icd10cm/data/processed/"
-            "icd10cm_supplemental_2026.duckdb"
-        ),
         "env": "VOCABULARY_FORMATS_TABULAR_DUCKDB",
         "queries": [
             "SELECT note_text FROM notes",
@@ -63,7 +60,6 @@ CORPORA = {
     },
     "papers": {
         "kind": "nxml_dir",
-        "default_path": "/home/ryan/projects/outins/litmine/papers",
         "env": "VOCABULARY_FORMATS_PAPERS_DIR",
         "what": (
             "The litmine pilot's 20 PubMed Central articles, as JATS XML. LITERATURE prose -- "
@@ -123,8 +119,13 @@ def selftest_tokenizer():
 
 
 def resolve(name, spec):
-    path = Path(os.environ.get(spec["env"], spec["default_path"]))
-    return {"name": name, "path": path, "spec": spec, "available": path.exists()}
+    path = env_path(spec["env"])
+    return {
+        "name": name,
+        "path": path,
+        "spec": spec,
+        "available": path is not None and path.exists(),
+    }
 
 
 def load_corpus(source):
@@ -203,6 +204,9 @@ def main(argv):
     corpora = {}
     for name, spec in CORPORA.items():
         source = resolve(name, spec)
+        if source["path"] is None:
+            print(f"  SKIP corpus {name}: {unset_reason(spec['env'])}")
+            continue
         state = (
             "available" if source["available"] else "UNAVAILABLE (not on this machine)"
         )
@@ -214,10 +218,8 @@ def main(argv):
         print(
             "\nSKIPPED: no text corpus on this machine, so there is nothing to score the rows\n"
             "         against. This is a report, not a gate -- `just lint` and `just test` are\n"
-            "         unaffected. Point one of these at a corpus and re-run:\n"
-            + "".join(
-                f"           {s['env']}={s['default_path']}\n" for s in CORPORA.values()
-            )
+            "         unaffected. Set one of these in .env (see .env.example) and re-run:\n"
+            + "".join(f"           {s['env']}\n" for s in CORPORA.values())
         )
         return 0
 

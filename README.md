@@ -305,8 +305,11 @@ All three tee a timestamped log into `claude_stuff/` and print its path. `just t
 substrate from `VOCABULARY_FORMATS_ATHENA_CSV` (a stock Athena `CONCEPT.csv`) and
 `VOCABULARY_FORMATS_OI_DUCKDB` (a `vocabulation` build, the only place the OI-minted vocabularies
 `CPT4_HCPCS` and `ICD03_*` exist); `just prose` reads its corpora from
-`VOCABULARY_FORMATS_TABULAR_DUCKDB` and `VOCABULARY_FORMATS_PAPERS_DIR`. Defaults for all four are
-in the scripts that use them.
+`VOCABULARY_FORMATS_TABULAR_DUCKDB` and `VOCABULARY_FORMATS_PAPERS_DIR`. None of the four has a
+default: each host sets them in an untracked `.env` at the repo root, which the justfile loads
+(`set dotenv-load`). Copy `.env.example`, which lists the names without values, and fill in this
+machine's paths. An unset variable makes its check SKIP loudly, naming the variable — a skip, never
+a pass.
 
 **Narrowing a row means running both.** `just prose` says what the change bought; `just test` says
 what it cost. A narrowing that costs even one in-target code is a bug, whatever it bought.
