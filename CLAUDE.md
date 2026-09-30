@@ -120,9 +120,10 @@ add producer code here.
 
 A lookup compares labels after **THE LABEL FOLD** (ruled 2026-09-30, `vocabulary_formats-7j0`;
 the contract is in README, the reference is `fold_label` in `checks/lint.py`): Pd dashes and U+2212
-become `-` (U+00AD soft hyphen does NOT); whitespace (NBSP included) collapses and is dropped beside
-a dash; case is folded. Dashes and spaces are never removed, so `ICD 10 CM`, `ICD-10-CM` and
-`ICD10CM` are three rows. `just lint` fails if two labels fold together — a variant the fold covers
+become `-` (U+00AD soft hyphen does NOT); whitespace — the Unicode `White_Space` property, 25 code
+points written out as `WHITE_SPACE`, NBSP included, and NOT `str.isspace()` / `\s`, which add
+U+001C–U+001F (`vocabulary_formats-ssu`) — collapses and is dropped beside a dash; case is folded.
+Dashes and spaces are never removed, so `ICD 10 CM`, `ICD-10-CM` and `ICD10CM` are three rows. `just lint` fails if two labels fold together — a variant the fold covers
 gets a `source` entry on the existing row, not a row. Bare `Read` has deliberately NO row (seed
 `vfm-b19`, deferred until Read-code work starts).
 

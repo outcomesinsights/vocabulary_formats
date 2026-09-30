@@ -288,10 +288,16 @@ implement exactly these three steps, in this order, and nothing else.
    U+2212 MINUS SIGN, becomes an ASCII `-`. **U+00AD SOFT HYPHEN is deliberately not a dash**: it is
    an invisible line-break hint, and turning it into `-` would invent a dash the author never
    printed. It is left as it is.
-2. **Whitespace is collapsed.** Whitespace means any Unicode whitespace, so U+00A0 NO-BREAK SPACE
-   counts. Each run becomes one space, the ends are trimmed, and whitespace **adjacent to a dash**
-   is dropped, so `ICD - 10` folds to `icd-10`. Spaces anywhere else stay: `ICD 10 CM`,
-   `ICD-10-CM` and `ICD10CM` are three different labels, and each has its own row.
+2. **Whitespace is collapsed.** Whitespace means exactly the Unicode `White_Space` property, these
+   25 code points: U+0009–U+000D (tab, line feed, vertical tab, form feed, carriage return),
+   U+0020 SPACE, U+0085 NEXT LINE, U+00A0 NO-BREAK SPACE, U+1680, U+2000–U+200A, U+2028, U+2029,
+   U+202F, U+205F and U+3000 IDEOGRAPHIC SPACE. Each run becomes one space, the ends are trimmed,
+   and whitespace **adjacent to a dash** is dropped, so `ICD - 10` folds to `icd-10`. Spaces
+   anywhere else stay: `ICD 10 CM`, `ICD-10-CM` and `ICD10CM` are three different labels, and
+   each has its own row. Name the set, do not reach for a language's whitespace predicate: Python's
+   `str.isspace()` and regex `\s` (and a bare `str.strip()`) also treat U+001C–U+001F, the ASCII
+   file, group, record and unit separators, as whitespace, and the fold does not. Ruby's
+   `/\p{White_Space}/` is this set exactly; Python's `re` has no `\p{…}`, so write the set out.
 3. **Case is ignored**, by Unicode case folding (Python `str.casefold()`, Ruby
    `String#downcase(:fold)`).
 
