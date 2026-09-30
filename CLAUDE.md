@@ -143,9 +143,16 @@ enforcing those two rules can be silently wrong like any other.
 its OWN declared target — `checks/validation_targets.json`, where each target and every deliberate
 exclusion lives as data with its evidence — and fails on any in-target false negative. Substrates are
 a stock Athena `CONCEPT.csv` and a `vocabulation` build (schema `ohdsi_vocabs`, **not** `main`, and
-the only place the OI-minted `CPT4_HCPCS` / `ICD03_*` exist); override with
+the only place the OI-minted `CPT4_HCPCS` / `ICD03_*` exist), named by
 `VOCABULARY_FORMATS_ATHENA_CSV` / `VOCABULARY_FORMATS_OI_DUCKDB`. Editing a regexp means re-running
 it; adding a row means declaring its target, or lint fails.
+
+**Substrate paths live in an untracked `.env`, never in a tracked file** (`vocabulary_formats-6q7`,
+2026-09-30). The justfile has `set dotenv-load`; `.env.example` lists all four names
+(`_ATHENA_CSV`, `_OI_DUCKDB`, `_TABULAR_DUCKDB`, `_PAPERS_DIR`) without values. No script carries a
+default path, and an UNSET variable is a loud SKIP naming the variable, because the gate runs on
+every commit and a quiet skip hides a disarmed check. A fresh clone or worktree has no `.env`, so
+`just test` there skips every row until one is copied in.
 
 **`just prose`** answers the other half: not "does this row reject a real code?" but "what ELSE does
 it accept?", scored against real running text — the FY2026 ICD-10-CM tabular (21,248 tokens) and the

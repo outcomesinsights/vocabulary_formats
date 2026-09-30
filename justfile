@@ -16,6 +16,10 @@ python := "uv run --no-project --with duckdb python"
 # so `just prose --try 'X=\w{3}'` reaches the script intact instead of through the shell twice
 set positional-arguments
 
+# Substrate and corpus paths come from this host's UNTRACKED .env (names in .env.example). No
+# script carries a default path; an unset variable makes its check SKIP loudly, naming it.
+set dotenv-load
+
 # default: the gate that needs nothing
 default: lint
 

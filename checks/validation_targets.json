@@ -13,13 +13,11 @@
   "sources": {
     "athena": {
       "kind": "csv",
-      "default_path": "/mnt/samba/data/ohdsi_vocabs/20260625/CONCEPT.csv",
       "env": "VOCABULARY_FORMATS_ATHENA_CSV",
       "what": "Stock OHDSI CONCEPT table as downloaded from Athena, tab-delimited. Covers every vocabulary OHDSI ships."
     },
     "oi": {
       "kind": "duckdb",
-      "default_path": "/home/ryan/projects/outins/vocabulation/synpuf_test_data.duckdb",
       "schema": "ohdsi_vocabs",
       "env": "VOCABULARY_FORMATS_OI_DUCKDB",
       "what": "vocabulation's build: the same Athena release with our supplemental vocabularies grafted on. The ONLY substrate that carries the OI-minted vocabularies (CPT4_HCPCS, ICD03_Morphology, ICD03_Topography) -- they are not in Athena, so rows targeting them cannot be scored against the CSV."

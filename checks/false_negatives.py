@@ -20,6 +20,12 @@ SUBSTRATE. Two sources, both optional, both skippable:
 The OI-minted vocabularies (CPT4_HCPCS, ICD03_*) exist only in the second. A missing source SKIPS
 the rows that need it and never fails the run -- a gate that cannot run on a machine without a
 1.4 GB vocabulary download is a gate nobody keeps.
+
+THERE IS NO DEFAULT PATH. Each host names its substrates in an untracked .env at the repo root
+(the names are in .env.example; the justfile's `set dotenv-load` reads it). A path baked in here
+would name one machine's layout in a tracked file and be silently wrong on every other host. An
+UNSET variable is a LOUD skip that names the variable -- this runs on every commit, and a quiet
+skip would hide a disarmed check.
 """
 
 import json
@@ -68,17 +74,34 @@ def load_rows():
     return rows, order
 
 
+def env_path(env):
+    """The path an env var names, or None when it is unset or empty. Read at run time, and never
+    defaulted: the value lives in this host's untracked .env (see .env.example)."""
+    value = os.environ.get(env, "").strip()
+    return Path(value) if value else None
+
+
+def unset_reason(env):
+    return f"{env} is not set (put it in .env; the names are in .env.example)"
+
+
 def resolve_sources(declaration):
     """Which substrates are actually on this machine. Absence is a skip, never a failure."""
     resolved = {}
     for name, spec in declaration["sources"].items():
-        path = Path(os.environ.get(spec["env"], spec["default_path"]))
+        path = env_path(spec["env"])
+        if path is None:
+            reason = f"skipped: {unset_reason(spec['env'])}"
+        elif not path.exists():
+            reason = f"not on this machine: {path} (from {spec['env']})"
+        else:
+            reason = ""
         resolved[name] = {
             "path": path,
             "kind": spec["kind"],
             "schema": spec.get("schema"),
-            "available": path.exists(),
-            "reason": "" if path.exists() else f"not on this machine: {path}",
+            "available": not reason,
+            "reason": reason,
         }
     return resolved
 
@@ -216,6 +239,11 @@ def main():
     print("false-negative harness -- every row against its own declared target")
     print(f"  targets: {TARGETS}")
     for name, source in sources.items():
+        if source["path"] is None:
+            print(
+                f"  SKIP source {name}: {unset_reason(declaration['sources'][name]['env'])}"
+            )
+            continue
         state = (
             "available" if source["available"] else f"UNAVAILABLE ({source['reason']})"
         )
@@ -225,10 +253,9 @@ def main():
         print(
             "\nSKIPPED: no OHDSI concept substrate on this machine, so there is nothing to score\n"
             "         false negatives against. This is a skip, not a pass -- the rows are\n"
-            "         UNVALIDATED. Point one of these at a substrate and re-run:\n"
+            "         UNVALIDATED. Set one of these in .env (see .env.example) and re-run:\n"
             + "".join(
-                f"           {declaration['sources'][n]['env']}={declaration['sources'][n]['default_path']}\n"
-                for n in sources
+                f"           {declaration['sources'][n]['env']}\n" for n in sources
             )
             + "         `just lint` is the structural gate and needs no database."
         )
