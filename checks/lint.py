@@ -17,6 +17,9 @@ Every check here was previously protected by nothing but memory:
                     candidates IFF needs_context (2+ distinct ids), and every `source` entry
                     parses. Consumers in two languages branch on status, so an unknown value is a
                     row that silently falls through every branch (vocabulary_formats-yq4, -7dl).
+  label fold        vocabulary_labels: labels are unique AFTER THE LABEL FOLD, the comparison every
+                    consumer's lookup performs -- two rows that fold together are one lookup key
+                    with two answers (vocabulary_formats-7j0).
 
 Regexps are compiled with Python's `re`. The column is documented as PCRE, but the live consumers
 (litmine, codesistant) are Python, so Python is the compiler that decides whether a row works.
@@ -25,6 +28,7 @@ Regexps are compiled with Python's `re`. The column is documented as PCRE, but t
 import json
 import re
 import sys
+import unicodedata
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -346,6 +350,122 @@ def selftest_labels():
             )
 
 
+# THE LABEL FOLD (ruled 2026-09-30, vocabulary_formats-7j0). The README states it as a contract and
+# codesistant's resolve_label() implements it exactly, so the two must not drift:
+#   1. dashes made UNIFORM, never removed: Unicode category Pd, plus U+2212 MINUS SIGN, -> '-'.
+#      U+00AD SOFT HYPHEN is deliberately NOT a dash (an invisible line-break hint; turning it into
+#      '-' would invent a dash the author never printed). It is left exactly as it is.
+#   2. whitespace (str.isspace, so NBSP counts) collapses to one space, the ends are trimmed, and
+#      whitespace ADJACENT TO A DASH is dropped. Spaces elsewhere stay: 'ICD 10 CM' != 'ICD-10-CM'
+#      != 'ICD10CM'. Stripping dashes and spaces entirely was REJECTED.
+#   3. case is ignored (str.casefold).
+EXTRA_DASHES = {"−"}  # MINUS SIGN is category Sm, but authors print it as a dash
+_WHITESPACE_RUN = re.compile(
+    r"\s+"
+)  # Python's \s on str is Unicode whitespace, NBSP included
+_SPACE_AT_DASH = re.compile(r" ?- ?")
+
+
+def fold_label(label):
+    """A label as every registry lookup compares it. See THE LABEL FOLD above."""
+    s = "".join(
+        "-" if unicodedata.category(c) == "Pd" or c in EXTRA_DASHES else c
+        for c in label
+    )
+    s = _WHITESPACE_RUN.sub(" ", s).strip()
+    return _SPACE_AT_DASH.sub("-", s).casefold()
+
+
+# Hand-built inputs with hand-computed answers: (label, what it must fold to).
+FOLD_SELFTEST = [
+    ("ICD-10-CM", "icd-10-cm"),
+    ("icd-10-cm", "icd-10-cm"),
+    ("ICD‐10", "icd-10"),  # U+2010 HYPHEN (Pd)
+    ("ICD‑10", "icd-10"),  # U+2011 NON-BREAKING HYPHEN (Pd)
+    ("ICD–10", "icd-10"),  # U+2013 EN DASH (Pd)
+    ("ICD—10", "icd-10"),  # U+2014 EM DASH (Pd)
+    ("ICD−10", "icd-10"),  # U+2212 MINUS SIGN (Sm): in the dash set by ruling
+    ("ICD­10", "icd­10"),  # U+00AD SOFT HYPHEN: NOT a dash, and not removed
+    ("ICD - 10", "icd-10"),  # whitespace adjacent to a dash is dropped
+    ("ICD – 10 ‑ CM", "icd-10-cm"),
+    ("ICD 10 CM", "icd 10 cm"),  # NBSP is whitespace
+    ("  ICD \t 10   CM ", "icd 10 cm"),  # runs collapse, ends trimmed
+    ("ICD 10 CM", "icd 10 cm"),  # spaces NOT beside a dash stay ...
+    ("ICD10CM", "icd10cm"),  # ... and nothing is inserted or removed
+    ("CPT/HCPCS", "cpt/hcpcs"),  # a slash is not a dash
+    ("-ICD-", "-icd-"),  # a dash is never removed, even at an end
+]
+
+# Hand-built label columns, and the collisions label_collisions must report for each as
+# (line, line of the earlier label it folds onto). Lines count from 2, as in the file.
+UNIQUE_SELFTEST = [
+    (["ICD-10-CM", "ICD 10 CM", "ICD10CM"], []),  # Ryan: three different labels
+    (["ICD-10", "icd-10"], [(3, 2)]),
+    (["ICD-10", "ICD‐10"], [(3, 2)]),
+    (["ICD-10", "ICD − 10"], [(3, 2)]),
+    (["ICD 10 CM", "ICD 10  CM "], [(3, 2)]),
+    (["ICD-10", "ICD­10", "ICD10"], []),  # soft hyphen: neither a dash nor nothing
+    (["SNOMED", "LOINC", "Snomed", "SNOMED"], [(4, 2), (5, 2)]),
+]
+
+
+def label_collisions(labels):
+    """[(line, earlier_line, folded)] for each label folding onto an earlier one. Lines from 2."""
+    seen, out = {}, []
+    for lineno, label in enumerate(labels, start=2):
+        key = fold_label(label)
+        if key in seen:
+            out.append((lineno, seen[key], key))
+        else:
+            seen[key] = lineno
+    return out
+
+
+def selftest_fold():
+    rule = (
+        "    RULE: the label fold is a published contract (README) that a consumer in another\n"
+        "    language re-implements. A fold that is wrong here lets two rows answer one lookup,\n"
+        "    so it is checked against hand-computed answers every time the gate runs."
+    )
+    for label, want in FOLD_SELFTEST:
+        got = fold_label(label)
+        if got != want:
+            fail(
+                "checks/lint.py fold_label",
+                f"self-test failed on {label!r}: folded to {got!r}, want {want!r}",
+                rule,
+            )
+    for labels, want in UNIQUE_SELFTEST:
+        got = [(line, earlier) for line, earlier, _ in label_collisions(labels)]
+        if got != want:
+            fail(
+                "checks/lint.py label_collisions",
+                f"self-test failed on {labels!r}: collisions {got!r}, want {want!r}",
+                rule,
+            )
+
+
+LABEL_FOLD_RULE = """
+    RULE: `label` is the lookup key, and every lookup compares labels AFTER THE LABEL FOLD
+    (README): dashes made uniform, whitespace collapsed and dropped beside a dash, case ignored.
+    Two rows that fold together are one key with two answers, and which one a consumer gets
+    depends on how it loads the file. Keep one row per spelling the fold keeps distinct; for a
+    variant the fold already covers, append a `source` entry to the existing row instead.
+"""
+
+
+def check_labels_unique(rows):
+    labels = [row["label"] for _, row in rows]
+    for index, earlier, key in label_collisions(labels):
+        lineno, row = rows[index - 2]
+        earlier_lineno, earlier_row = rows[earlier - 2]
+        fail(
+            f"{LABELS.name}:{lineno} {row['label']!r}",
+            f"folds to {key!r}, the same as {earlier_row['label']!r} on line {earlier_lineno}",
+            LABEL_FOLD_RULE,
+        )
+
+
 def check_labels(rows):
     for lineno, row in rows:
         for column, message in label_row_problems(row):
@@ -617,6 +737,11 @@ def main():
     print(f"  scan_pattern self-test: {len(SCANNER_SELFTEST)} hand-built patterns")
     selftest_labels()
     print(f"  label_row_problems self-test: {len(LABEL_SELFTEST)} hand-built rows")
+    selftest_fold()
+    print(
+        f"  fold_label self-test: {len(FOLD_SELFTEST)} hand-built labels, "
+        f"{len(UNIQUE_SELFTEST)} hand-built label columns"
+    )
     malformed = set()
     rows_by_table = {}
     for path in (FORMATS, LABELS):
@@ -632,7 +757,9 @@ def main():
     compiled = check_regexps(formats_rows)
     print(f"  regexps that compile as \\A(?:...)\\z: {compiled}/{len(formats_rows)}")
     check_unique(formats_rows, "vocabulary_id", FORMATS.name)
-    check_unique(labels_rows, "label", LABELS.name)
+    check_labels_unique(
+        labels_rows
+    )  # after the fold, which implies byte-for-byte unique
     check_labels(labels_rows)
     check_parquet_in_sync(malformed)
     check_targets(formats_rows)
@@ -641,7 +768,8 @@ def main():
         print(
             "\nOK: no anchors, no top-level alternation, unique keys, parquet in sync,"
         )
-        print("    every row's validation target declared, every label row consistent.")
+        print("    every row's validation target declared, every label row consistent,")
+        print("    every label unique after the label fold.")
         return 0
 
     print(f"\nFAILED: {len(failures)} problem(s)\n")

@@ -2,7 +2,7 @@
 
 > Two data tables: PCRE regexes that say whether a code *looks* valid for a vocabulary
 > (`vocabulary_formats.tsv`, 34 rows), and a registry mapping vocabulary labels seen in the wild to
-> OHDSI `vocabulary_id`s (`vocabulary_labels.tsv`, 22 rows).
+> OHDSI `vocabulary_id`s (`vocabulary_labels.tsv`, 79 rows).
 
 ## Status
 
@@ -117,6 +117,14 @@ we deliberately declined. **Never add a `status=unseen` row** — a row would me
 `just lint` rejects any status outside the four. The miss report belongs in the PRODUCER; do not
 add producer code here.
 
+A lookup compares labels after **THE LABEL FOLD** (ruled 2026-09-30, `vocabulary_formats-7j0`;
+the contract is in README, the reference is `fold_label` in `checks/lint.py`): Pd dashes and U+2212
+become `-` (U+00AD soft hyphen does NOT); whitespace (NBSP included) collapses and is dropped beside
+a dash; case is folded. Dashes and spaces are never removed, so `ICD 10 CM`, `ICD-10-CM` and
+`ICD10CM` are three rows. `just lint` fails if two labels fold together — a variant the fold covers
+gets a `source` entry on the existing row, not a row. Bare `Read` has deliberately NO row (seed
+`vfm-b19`, deferred until Read-code work starts).
+
 ## Tech Stack
 
 - Language: the PUBLISHED artifacts are data only (TSV/Parquet) — nothing a consumer loads is code.
@@ -161,7 +169,9 @@ enforces the registry's row contract (`vocabulary_formats-yq4`, 2026-09-30): `st
 `mapped` / `unsupported` / `multi_vocabulary` / `needs_context`; `vocabulary_id` is filled IFF
 `mapped`; `candidates` IFF `needs_context`, with 2+ distinct `|`-separated ids; and every `source`
 entry parses as `<producer>:<run>[;key=count...]`, entries `|`-separated, no run twice
-(`vocabulary_formats-7dl`) — self-tested on hand-built bad rows the same way.
+(`vocabulary_formats-7dl`) — self-tested on hand-built bad rows the same way; and every label is
+unique after the label fold (`vocabulary_formats-7j0`), with the fold self-tested on hand-built
+labels and colliding label columns.
 
 **`just test`** replaces the hand-run snippet this section used to carry. It scores every row against
 its OWN declared target — `checks/validation_targets.json`, where each target and every deliberate
