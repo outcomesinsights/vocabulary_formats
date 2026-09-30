@@ -1,8 +1,9 @@
 # vocabulary_formats
 
-> Two data tables: PCRE regexes that say whether a code *looks* valid for a vocabulary
-> (`vocabulary_formats.tsv`, 34 rows), and a registry mapping vocabulary labels seen in the wild to
-> OHDSI `vocabulary_id`s (`vocabulary_labels.tsv`, 79 rows).
+> Three data tables: PCRE regexes that say whether a code *looks* valid for a vocabulary
+> (`vocabulary_formats.tsv`, 38 rows), a registry mapping vocabulary labels seen in the wild to
+> OHDSI `vocabulary_id`s (`vocabulary_labels.tsv`, 79 rows), and which published vocabularies each
+> hybrid we materialize is built from (`vocabulary_composition.tsv`, 2 rows).
 
 ## Status
 
@@ -139,12 +140,19 @@ Provides regular expressions that verify if medical terminology codes "look" val
 
 ## Key Entry Points
 
-**The published interface is FOUR files and nothing else**: `vocabulary_formats.tsv`/`.parquet` (the
-regexps, human-editable TSV) and `vocabulary_labels.tsv`/`.parquet` (the label registry, same shape).
+**The published interface is SIX files and nothing else**: `vocabulary_formats.tsv`/`.parquet` (the
+regexps, human-editable TSV), `vocabulary_labels.tsv`/`.parquet` (the label registry, same shape) and
+`vocabulary_composition.tsv`/`.parquet` (hybrid -> source vocabularies, same shape).
 `checks/`, the `justfile` and the `Makefile` are internal machinery — no consumer imports them, which
 is what keeps the tables polyglot. `README.md` states this for consumers, with what to pin to (a
 commit SHA; there are no tags) and what may change under them.
 
+- `vocabulary_composition.tsv` — ruled 2026-09-30 (`vocabulary_formats-909`): `CPT4_HCPCS` ->
+  {`CPT4`, `HCPCS`}, so a lookup keyed on published vocabularies (editions) fans out through it
+  instead of joining the widened label target and finding nothing. HCPCS finds its editions; CPT4
+  honestly finds none (no UMLS licence). **Never add edition rows for a hybrid** — it has no
+  publisher, release or cadence. The `CPT` / `CPT-4` / `HCPCS` widening notes in
+  `vocabulary_labels.tsv` stay as they are; this table complements them, it does not undo them.
 - `vocabulary_formats.csv` — **RETIRED** 2024-06-21 (`446f5cb`), replaced by the TSV; ruled
   2026-08-13 that it stays retired. The raw URL 404s. A consumer moving off it must bind a boundary
   in the same change: the CSV's patterns were anchored `^…$`, today's are bare, so a bare URL swap
@@ -157,7 +165,7 @@ commit SHA; there are no tags) and what may change under them.
 just lint    # THE GATE — structural, no database, seconds. Run before every commit.
 just test    # the false-negative harness; skips cleanly when the machine has no concept table
 just prose   # what each row admits from real running text; a REPORT, never a gate
-make all     # regenerate both parquets after editing a TSV (just lint checks that you did)
+make all     # regenerate every parquet after editing a TSV (just lint checks that you did)
 ```
 
 **`just lint`** enforces what nothing else did: every regexp compiles, **no anchors** and **no
@@ -171,7 +179,9 @@ enforces the registry's row contract (`vocabulary_formats-yq4`, 2026-09-30): `st
 entry parses as `<producer>:<run>[;key=count...]`, entries `|`-separated, no run twice
 (`vocabulary_formats-7dl`) — self-tested on hand-built bad rows the same way; and every label is
 unique after the label fold (`vocabulary_formats-7j0`), with the fold self-tested on hand-built
-labels and colliding label columns.
+labels and colliding label columns. For `vocabulary_composition.tsv` it enforces a unique
+(`vocabulary_id`, `source_vocabulary_id`) pair (`vocabulary_formats-909`), self-tested on
+hand-built pair columns, and its parquet in sync like the other two.
 
 **`just test`** replaces the hand-run snippet this section used to carry. It scores every row against
 its OWN declared target — `checks/validation_targets.json`, where each target and every deliberate
@@ -182,7 +192,8 @@ the only place the OI-minted `CPT4_HCPCS` / `ICD03_*` exist), named by
 it; adding a row means declaring its target, or lint fails. It also checks that every id
 `vocabulary_labels.tsv` names — `vocabulary_id` and each of `candidates` — exists in the oi build's
 `vocabulary` table; with only Athena present, ids Athena lacks are reported UNVERIFIED, never
-missing, because Athena cannot hold the OI-minted ones.
+missing, because Athena cannot hold the OI-minted ones. The same check, through the same code,
+covers both ids of every `vocabulary_composition.tsv` row.
 
 **Substrate paths live in an untracked `.env`, never in a tracked file** (`vocabulary_formats-6q7`,
 2026-09-30). The justfile has `set dotenv-load`; `.env.example` lists all four names

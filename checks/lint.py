@@ -1,4 +1,4 @@
-"""Structural lint over the two published tables. NO DATABASE, NO NETWORK, fast.
+"""Structural lint over the three published tables. NO DATABASE, NO NETWORK, fast.
 
 This is the gate (`just lint`). It answers "is the table well-formed, and does it still obey the
 invariants we measured?" -- never "is a regexp right", which needs the concept table and lives in
@@ -20,6 +20,9 @@ Every check here was previously protected by nothing but memory:
   label fold        vocabulary_labels: labels are unique AFTER THE LABEL FOLD, the comparison every
                     consumer's lookup performs -- two rows that fold together are one lookup key
                     with two answers (vocabulary_formats-7j0).
+  composition pair  vocabulary_composition: (vocabulary_id, source_vocabulary_id) is unique -- a
+                    repeated pair makes an edition lookup fan out to the same source twice
+                    (vocabulary_formats-909).
 
 Regexps are compiled with Python's `re`. The column is documented as PCRE, but the live consumers
 (litmine, codesistant) are Python, so Python is the compiler that decides whether a row works.
@@ -34,11 +37,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 FORMATS = ROOT / "vocabulary_formats.tsv"
 LABELS = ROOT / "vocabulary_labels.tsv"
+COMPOSITION = ROOT / "vocabulary_composition.tsv"
 TARGETS = Path(__file__).resolve().parent / "validation_targets.json"
 
 TABLES = {
     FORMATS: ["vocabulary_id", "regexp", "context", "use", "source", "notes"],
     LABELS: ["label", "vocabulary_id", "candidates", "status", "source", "notes"],
+    COMPOSITION: ["vocabulary_id", "source_vocabulary_id", "notes"],
 }
 
 # vocabulary_labels.tsv. The status set is CLOSED: a consumer branches on it, and a value it does
@@ -476,6 +481,70 @@ def check_labels(rows):
             )
 
 
+# vocabulary_composition.tsv (vocabulary_formats-909): one row per (hybrid, source vocabulary) pair.
+COMPOSITION_KEY = ("vocabulary_id", "source_vocabulary_id")
+
+COMPOSITION_RULE = """
+    RULE: vocabulary_composition states each (vocabulary_id, source_vocabulary_id) pair ONCE. An
+    edition lookup fans out over a hybrid's rows, so a repeated pair returns that source's editions
+    twice, and two rows disagreeing in `notes` leave a consumer to guess which evidence stands.
+    Delete the duplicate; put anything it added in the surviving row's notes.
+"""
+
+# Hand-built pair columns, and the duplicates composition_duplicates must report for each as
+# (line, line of the earlier identical pair). Lines count from 2, as in the file. Ids are compared
+# EXACTLY: vocabulary_ids are case-sensitive keys, and `just test` catches an id that names nothing.
+COMPOSITION_SELFTEST = [
+    ([("CPT4_HCPCS", "CPT4"), ("CPT4_HCPCS", "HCPCS")], []),  # the table as ruled
+    ([("CPT4_HCPCS", "CPT4"), ("CPT4_HCPCS", "CPT4")], [(3, 2)]),  # the rule's target
+    (
+        [("CPT4_HCPCS", "CPT4"), ("CPT4_HCPCS", "HCPCS"), ("CPT4_HCPCS", "CPT4")],
+        [(4, 2)],
+    ),
+    ([("A_B", "A"), ("C_A", "A")], []),  # one source feeding two hybrids is fine
+    ([("CPT4_HCPCS", "CPT4"), ("CPT4_HCPCS", "cpt4")], []),  # exact: case not folded
+    ([("CPT4_HCPCS", "CPT4"), ("CPT4", "CPT4_HCPCS")], []),  # the pair is ordered
+    ([("X", "Y"), ("X", "Y"), ("X", "Y")], [(3, 2), (4, 2)]),
+]
+
+
+def composition_duplicates(pairs):
+    """[(line, earlier_line)] for each pair repeating an earlier one. Lines from 2."""
+    seen, out = {}, []
+    for lineno, pair in enumerate(pairs, start=2):
+        if pair in seen:
+            out.append((lineno, seen[pair]))
+        else:
+            seen[pair] = lineno
+    return out
+
+
+def selftest_composition():
+    for pairs, want in COMPOSITION_SELFTEST:
+        got = composition_duplicates(pairs)
+        if got != want:
+            fail(
+                "checks/lint.py composition_duplicates",
+                f"self-test failed on {pairs!r}: duplicates {got!r}, want {want!r}",
+                "    RULE: the pair check decides whether an edition lookup fans out once per\n"
+                "    source. A check that is wrong reports green over a broken table, so it is\n"
+                "    checked against hand-computed answers every time the gate runs.",
+            )
+
+
+def check_composition_unique(rows):
+    pairs = [tuple(row[k] for k in COMPOSITION_KEY) for _, row in rows]
+    for index, earlier in composition_duplicates(pairs):
+        lineno, row = rows[index - 2]
+        earlier_lineno, _ = rows[earlier - 2]
+        fail(
+            f"{COMPOSITION.name}:{lineno}",
+            f"duplicate pair ({row['vocabulary_id']!r}, {row['source_vocabulary_id']!r}) "
+            f"(first seen on line {earlier_lineno})",
+            COMPOSITION_RULE,
+        )
+
+
 def read_table(path, columns):
     """Parse a TSV by hand -- no csv module, no duckdb. Checks tabs, columns, and returns rows."""
     text = path.read_bytes().decode("utf-8")
@@ -584,7 +653,7 @@ def check_parquet_in_sync(malformed):
         return
 
     con = duckdb.connect(":memory:")
-    for tsv in (FORMATS, LABELS):
+    for tsv in TABLES:
         parquet = tsv.with_suffix(".parquet")
         if tsv in malformed:
             print(
@@ -742,9 +811,14 @@ def main():
         f"  fold_label self-test: {len(FOLD_SELFTEST)} hand-built labels, "
         f"{len(UNIQUE_SELFTEST)} hand-built label columns"
     )
+    selftest_composition()
+    print(
+        f"  composition_duplicates self-test: {len(COMPOSITION_SELFTEST)} "
+        "hand-built pair columns"
+    )
     malformed = set()
     rows_by_table = {}
-    for path in (FORMATS, LABELS):
+    for path in TABLES:
         before = len(failures)
         rows_by_table[path] = read_table(path, TABLES[path])
         if len(failures) > before:
@@ -761,6 +835,7 @@ def main():
         labels_rows
     )  # after the fold, which implies byte-for-byte unique
     check_labels(labels_rows)
+    check_composition_unique(rows_by_table[COMPOSITION])
     check_parquet_in_sync(malformed)
     check_targets(formats_rows)
 
@@ -769,7 +844,9 @@ def main():
             "\nOK: no anchors, no top-level alternation, unique keys, parquet in sync,"
         )
         print("    every row's validation target declared, every label row consistent,")
-        print("    every label unique after the label fold.")
+        print(
+            "    every label unique after the label fold, every composition pair unique."
+        )
         return 0
 
     print(f"\nFAILED: {len(failures)} problem(s)\n")

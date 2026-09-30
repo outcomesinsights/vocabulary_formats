@@ -10,12 +10,13 @@ Sometimes it's easier to see if a code "looks" like a valid code, hence these re
 
 ## The published interface — what you may fetch, and what you may rely on
 
-**Four files are the interface. Everything else in this repository is internal.**
+**Six files are the interface. Everything else in this repository is internal.**
 
-| Published artifact                                     | Answers                                                                         |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------- |
-| `vocabulary_formats.tsv`, `vocabulary_formats.parquet` | *does this string look like a code of vocabulary X?* — 34 rows                  |
-| `vocabulary_labels.tsv`, `vocabulary_labels.parquet`   | *a document called its vocabulary X — which `vocabulary_id` is that?* — 79 rows |
+| Published artifact                                             | Answers                                                                                  |
+| -------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `vocabulary_formats.tsv`, `vocabulary_formats.parquet`         | *does this string look like a code of vocabulary X?* — 38 rows                           |
+| `vocabulary_labels.tsv`, `vocabulary_labels.parquet`           | *a document called its vocabulary X — which `vocabulary_id` is that?* — 79 rows          |
+| `vocabulary_composition.tsv`, `vocabulary_composition.parquet` | *X is a hybrid we materialize — which published vocabularies is it built from?* — 2 rows |
 
 They sit at the repository root and keep those names. Each `.parquet` is generated from its `.tsv`
 by `make all` and carries the same rows and the same columns, so take whichever your consumer reads
@@ -44,13 +45,13 @@ https://raw.githubusercontent.com/outcomesinsights/vocabulary_formats/<ref>/voca
 - **A commit SHA is immutable**, and it is the only reproducible pin available here: this repo has
   no tags and no releases. Pin a SHA and re-point it deliberately.
 
-Vendoring a copy is a legitimate third option — both tables are small and the licence is MIT. Pin
+Vendoring a copy is a legitimate third option — all three tables are small and the licence is MIT. Pin
 a SHA or vendor; either way the version you are on is explicit. Fetching `main` is the one choice
 that hands you drift you cannot see.
 
 ### What you may rely on
 
-- **The four names and paths.** When an artifact is retired it is recorded under *Retired
+- **The six names and paths.** When an artifact is retired it is recorded under *Retired
   artifacts* below, with the commit and the date, instead of simply vanishing.
 - **`regexp` carries no anchors and no top-level alternation**, so `\A(?:pattern)\z` — or your
   language's equivalent, in the table two sections down — is always safe to build. `just lint`
@@ -60,7 +61,10 @@ that hands you drift you cannot see.
   evidence in `checks/validation_targets.json`. `just test` enforces it.
 - **Unique keys**: `vocabulary_id` in `vocabulary_formats`; `label` in `vocabulary_labels`, and
   unique **after the label fold**, not merely byte for byte — so a lookup that applies the fold
-  can never find two rows. `just lint` enforces it.
+  can never find two rows; the pair (`vocabulary_id`, `source_vocabulary_id`) in
+  `vocabulary_composition`, so a fan-out reaches each source once. `just lint` enforces it.
+- **Every id `vocabulary_composition` names exists in our substrate** — the hybrid and each of its
+  sources. `just test` enforces it, against the OI build, the only substrate that holds the hybrids.
 - **`status` in `vocabulary_labels` is a CLOSED set of four values, and it is what you branch
   on.** A blank `vocabulary_id` is load-bearing, not missing data — but three statuses leave it
   blank for three different reasons, so never gate on the blank alone. `vocabulary_id` is filled
@@ -71,7 +75,7 @@ that hands you drift you cannot see.
 
 ### What changes under you
 
-- **Rows are added** to both tables, and a `regexp` may be **narrowed**: still complete for its
+- **Rows are added** to all three tables, and a `regexp` may be **narrowed**: still complete for its
   declared target, but admitting fewer non-codes than the version you last read.
 - **Columns may be added.** Read columns by NAME, never by position.
 - **`notes`, and `source` in `vocabulary_formats`, are prose for humans.** They carry per-row
@@ -269,7 +273,9 @@ Columns:
 
 Note that a mapping may deliberately **widen**: `CPT` maps to `CPT4_HCPCS`, which covers CPT *and*
 HCPCS. That is correct for binding — a CPT code resolves in the hybrid — and costs nothing, because
-the verbatim label stays the row key.
+the verbatim label stays the row key. What a widened target is *made of* is not this table's
+business: `vocabulary_composition.tsv` (below) says `CPT4_HCPCS` draws on `CPT4` and `HCPCS`, which is
+what a lookup keyed on published vocabularies, such as editions, must fan out through.
 
 ### The label fold: how a lookup compares labels
 
@@ -357,6 +363,45 @@ use the concept table to confirm it. For a row moved here from a producer's own 
 code_collector's label tables), the ruling that decided it counts as the evidence: cite it, with its
 date.
 
+## `vocabulary_composition.tsv` — what a hybrid vocabulary is built from
+
+A third table, same TSV + Parquet shape, answering: **"`X` is a vocabulary we materialize by
+merging others — which published vocabularies is it built from?"** One row per (hybrid, source)
+pair. Today it holds one hybrid, `CPT4_HCPCS`, and its two sources.
+
+Columns:
+
+- `vocabulary_id` — the hybrid, as it appears in our substrate (e.g. `CPT4_HCPCS`). Repeats once
+  per source.
+- `source_vocabulary_id` — one published vocabulary the hybrid draws its codes from (`CPT4`,
+  `HCPCS`). The pair (`vocabulary_id`, `source_vocabulary_id`) is unique, and both ids exist in our
+  substrate.
+- `notes` — the **evidence** for the row: how the hybrid was measured to decompose, not an
+  assertion that it does.
+
+**Why it exists (ruled 2026-09-30, `vocabulary_formats-909`).** The label registry deliberately
+widens `CPT`, `CPT-4` and `HCPCS` to `CPT4_HCPCS`, and that is right for binding. But anything
+keyed on the *published* vocabulary — which edition was in force, the table a producer keeps as
+`vocabulary_edition` — has rows for `HCPCS`, never for `CPT4_HCPCS`. Resolve a label, then ask for
+its editions, and the natural join finds **nothing**; it fails as missing data, not as a mismatch.
+
+**The consumer contract: to look up editions (or anything else keyed on a published vocabulary)
+for a hybrid, fan out through this table.** `CPT4_HCPCS` → {`CPT4`, `HCPCS`}; look each source
+up; the union is the answer. For `CPT4_HCPCS` that means `HCPCS` finds its own editions (CMS,
+quarterly), and `CPT4` honestly finds **none**: Athena builds CPT4 entirely from UMLS, we hold no
+UMLS licence, and so CPT4 has no edition rows and cannot gain any. An empty result for a source is
+a true answer, not a gap to fill.
+
+**Never emit edition rows for a hybrid.** `CPT4_HCPCS` has no publisher, no release and no cadence
+of its own; an edition row for it would be invented, not derived. A vocabulary with no row here as
+`vocabulary_id` is not a hybrid — look it up directly.
+
+The composition is stated **once, as data**, so the Ruby catalog and the Python producers read it
+instead of each re-deriving it. Rejected: binding editions through the source vocabulary in every
+consumer (it pushes the knowledge into each of them), and a column on `vocabulary_formats.tsv`
+(that table is keyed on regexp rows, so it would repeat the fact across every `CPT4_HCPCS`
+variant).
+
 ## What "never reject a real code" is measured against
 
 Every regexp here is validated against the real `concept_code` values in an OHDSI build before it
@@ -428,15 +473,17 @@ code.
 just lint    # THE GATE. Structural: regexps compile, no anchors, no top-level alternation,
              # unique keys, parquet in sync with the TSV, every row's target declared,
              # every vocabulary_labels row's status/vocabulary_id/candidates consistent,
-             # every label unique after the label fold.
+             # every label unique after the label fold,
+             # every vocabulary_composition pair unique.
              # No database, no network, seconds — run it before every commit.
-just test    # The false-negative harness above, plus: every id vocabulary_labels names
-             # exists in the substrate. Needs an OHDSI concept table and skips
-             # cleanly, with a message, when there is not one on the machine.
+just test    # The false-negative harness above, plus: every id vocabulary_labels and
+             # vocabulary_composition name exists in the substrate. Needs an OHDSI
+             # concept table and skips cleanly, with a message, when there is not one
+             # on the machine.
 just prose   # The prose-adversary report. What each row admits from real running text.
              # Never fails; score a candidate beside the row it would replace with
              #   just prose --try 'ICD10=[A-Za-z][0-9][0-9A-Za-z](\.\w{1,4})?'
-make all     # Regenerate both parquets after editing a TSV (`just parquet` calls this).
+make all     # Regenerate every parquet after editing a TSV (`just parquet` calls this).
 ```
 
 All three tee a timestamped log into `claude_stuff/` and print its path. `just test` reads its

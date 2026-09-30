@@ -63,7 +63,7 @@ prose *ARGS:
     echo "log: $log" | tee -a "$log"
     exit $rc
 
-# regenerate both parquets from their TSVs. Run after editing a TSV, then commit both — `just lint`
+# regenerate every parquet from its TSV. Run after editing a TSV, then commit both — `just lint`
 # checks that you did.
 parquet:
     make all

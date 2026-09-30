@@ -33,6 +33,11 @@ The oi build's vocabulary table is the authority, because it holds the stock voc
 OI-minted ones. With only athena on the machine, the ids athena has are verified and the rest are
 reported UNVERIFIED, never missing: athena cannot hold CPT4_HCPCS or ICD03_*, so its not having an
 id says nothing about whether the id is real.
+
+COMPOSITION IDS (vocabulary_formats-909). vocabulary_composition.tsv gets the same check, through
+the same code: both its vocabulary_id (the hybrid, e.g. CPT4_HCPCS -- which only the oi build
+holds) and its source_vocabulary_id must exist, under the same oi-is-authority / athena-is-
+UNVERIFIED rule.
 """
 
 import json
@@ -44,6 +49,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 FORMATS = ROOT / "vocabulary_formats.tsv"
 LABELS = ROOT / "vocabulary_labels.tsv"
+COMPOSITION = ROOT / "vocabulary_composition.tsv"
 TARGETS = Path(__file__).resolve().parent / "validation_targets.json"
 
 FN_EXAMPLES = 8  # how many false negatives to print per row before truncating
@@ -238,13 +244,17 @@ def score(con, target, regexp, sources):
     return result
 
 
+def read_tsv_rows(path):
+    """Every data row of a published TSV, as a dict keyed by the header."""
+    lines = path.read_text(encoding="utf-8").rstrip("\n").split("\n")
+    header = lines[0].split("\t")
+    return [dict(zip(header, line.split("\t"))) for line in lines[1:]]
+
+
 def load_label_ids():
     """[(label, column, id)] for every vocabulary_id a registry row names, candidates included."""
-    lines = LABELS.read_text(encoding="utf-8").rstrip("\n").split("\n")
-    header = lines[0].split("\t")
     refs = []
-    for line in lines[1:]:
-        row = dict(zip(header, line.split("\t")))
+    for row in read_tsv_rows(LABELS):
         if row["vocabulary_id"].strip():
             refs.append((row["label"], "vocabulary_id", row["vocabulary_id"].strip()))
         if row["candidates"].strip():
@@ -253,10 +263,60 @@ def load_label_ids():
     return refs
 
 
+def load_composition_ids():
+    """[(row, column, id)] for both ids of every vocabulary_composition row.
+
+    Blank ids are kept, not skipped: a blank names no vocabulary, so it must surface as MISSING.
+    """
+    refs = []
+    for row in read_tsv_rows(COMPOSITION):
+        pair = f"{row['vocabulary_id']} -> {row['source_vocabulary_id']}"
+        for column in ("vocabulary_id", "source_vocabulary_id"):
+            refs.append((pair, column, row[column].strip()))
+    return refs
+
+
+LABEL_MISSING_CONSEQUENCE = (
+    "  A registry id that names no vocabulary binds nothing: every code set routed through that\n"
+    "  row silently vanishes. Fix the id, or the row's status."
+)
+COMPOSITION_MISSING_CONSEQUENCE = (
+    "  A composition id that names no vocabulary makes an edition lookup fan out to nothing, and\n"
+    "  that reads exactly like a vocabulary with no editions. Fix the id."
+)
+
+
 def check_label_ids(con, sources):
     """Every id vocabulary_labels.tsv names must exist in the substrate. Returns the missing refs."""
-    refs = load_label_ids()
-    rows = len({label for label, _, _ in refs})
+    return check_ids_exist(
+        con,
+        sources,
+        load_label_ids(),
+        "label ids",
+        LABELS.name,
+        LABEL_MISSING_CONSEQUENCE,
+    )
+
+
+def check_composition_ids(con, sources):
+    """Every id vocabulary_composition.tsv names must exist in the substrate."""
+    return check_ids_exist(
+        con,
+        sources,
+        load_composition_ids(),
+        "composition ids",
+        COMPOSITION.name,
+        COMPOSITION_MISSING_CONSEQUENCE,
+    )
+
+
+def check_ids_exist(con, sources, refs, heading, filename, consequence):
+    """Every ref's id must be a vocabulary in the substrate. Returns the missing refs.
+
+    refs are [(row, column, id)]. The oi build's vocabulary table is the authority; with only
+    athena present, ids it lacks are UNVERIFIED (returned as nothing), never missing.
+    """
+    rows = len({row for row, _, _ in refs})
     oi, athena = sources["oi"], sources["athena"]
     if oi["available"]:
         where = f"source 'oi' ({oi['schema']}.vocabulary)"
@@ -267,7 +327,7 @@ def check_label_ids(con, sources):
         rel = relation(athena, "athena")
         authoritative = False
     else:
-        print("\n  SKIP label ids: neither 'oi' nor 'athena' is available")
+        print(f"\n  SKIP {heading}: neither 'oi' nor 'athena' is available")
         return []
     known = {
         r[0]
@@ -276,7 +336,7 @@ def check_label_ids(con, sources):
     absent = [ref for ref in refs if ref[2] not in known]
 
     print(
-        f"\nlabel ids -- {len(refs)} ids named by {rows} rows of {LABELS.name}, against {where}"
+        f"\n{heading} -- {len(refs)} ids named by {rows} rows of {filename}, against {where}"
     )
     if not absent:
         print(f"  all {len(refs)} exist.")
@@ -290,13 +350,10 @@ def check_label_ids(con, sources):
         for label, column, vid in absent:
             print(f"    {vid!r}  ({column} of {label!r})")
         return []
-    print("  MISSING -- named by the registry but not a vocabulary in the substrate:")
+    print(f"  MISSING -- named by {filename} but not a vocabulary in the substrate:")
     for label, column, vid in absent:
         print(f"    {vid!r}  ({column} of {label!r})")
-    print(
-        "  A registry id that names no vocabulary binds nothing: every code set routed through that\n"
-        "  row silently vanishes. Fix the id, or the row's status."
-    )
+    print(consequence)
     return absent
 
 
@@ -323,8 +380,8 @@ def main():
         print(
             "\nSKIPPED: no OHDSI concept substrate on this machine, so there is nothing to score\n"
             "         false negatives against. This is a skip, not a pass -- the rows are\n"
-            "         UNVALIDATED, and so are the ids vocabulary_labels.tsv names. Set one of\n"
-            "         these in .env (see .env.example) and re-run:\n"
+            "         UNVALIDATED, and so are the ids the label and composition tables name.\n"
+            "         Set one of these in .env (see .env.example) and re-run:\n"
             + "".join(
                 f"           {declaration['sources'][n]['env']}\n" for n in sources
             )
@@ -393,7 +450,7 @@ def main():
         for r in skipped:
             print(f"  {r['vocabulary_id']}: {r['skipped']}")
 
-    missing_ids = check_label_ids(con, sources)
+    missing_ids = check_label_ids(con, sources) + check_composition_ids(con, sources)
     con.close()
     return 1 if (offenders or errors or missing_ids) else 0
 
