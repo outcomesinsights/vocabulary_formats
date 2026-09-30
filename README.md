@@ -64,6 +64,8 @@ that hands you drift you cannot see.
   blank for three different reasons, so never gate on the blank alone. `vocabulary_id` is filled
   exactly when `status` is `mapped`, `candidates` exactly when it is `needs_context`; `just lint`
   enforces both. Every id either column names exists in our substrate; `just test` enforces that.
+  A label with **no row** is not a fifth status: it is *unadjudicated*, and you must surface it,
+  never drop it — see *Looking a label up* below.
 
 ### What changes under you
 
@@ -237,6 +239,34 @@ Columns:
 Note that a mapping may deliberately **widen**: `CPT` maps to `CPT4_HCPCS`, which covers CPT *and*
 HCPCS. That is correct for binding — a CPT code resolves in the hybrid — and costs nothing, because
 the verbatim label stays the row key.
+
+### Looking a label up: five outcomes, and a missing row is not a decision
+
+Producers extract the vocabulary label **verbatim**, with no enum at extraction time, and this
+registry is the only place a label is normalized (ruled 2026-08-04). So a lookup has **five**
+outcomes, not four — the four statuses, plus the label having no row at all:
+
+| Lookup result           | What it is                                                              | What the consumer does                                                                                                                                              |
+| ----------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| row, `mapped`           | **ADJUDICATED.** Resolves to one vocabulary.                            | Bind the code set to `vocabulary_id`.                                                                                                                               |
+| row, `unsupported`      | **ADJUDICATED.** We looked; it has no OHDSI home as of now.             | Drop the set — an expected, counted drop.                                                                                                                           |
+| row, `multi_vocabulary` | **ADJUDICATED.** The label names several vocabularies at once.          | Split the set into per-vocabulary sets (habitat rule 4).                                                                                                            |
+| row, `needs_context`    | **ADJUDICATED.** The label names a family; the paper decides which one. | Pick one of `candidates` using the paper's own context. A lookup that cannot pick must **surface** the set as undecided — never default to a candidate, never drop. |
+| **no row**              | **UNADJUDICATED.** Nobody has ever looked at this label.                | **Surface and count it.** It is an error condition that needs a human, never a quiet drop.                                                                          |
+
+The first four are decisions. The fifth is the *absence* of one, and it must never be treated like
+a blank `vocabulary_id`: a consumer that drops "not found" the way it drops `unsupported` silently
+loses a code set that may be perfectly mappable, and reports it identically to one we deliberately
+declined. That is the omission failure habitat rule 7 names as the primary risk — and with verbatim
+extraction across thousands of papers, the unseen label is the **common** case, not the edge.
+
+**The consumer contract, plainly:** a label lookup returns either *found + decision* or *unseen*.
+*Unseen* is an error condition requiring a human. The remedy is a new row here, never a
+consumer-side guess.
+
+There is deliberately **no `unseen` status**, and there never will be: a row means someone looked.
+`just lint` rejects any status outside the four. Emitting the report of unseen labels is the
+**producer's** job; this repository holds data, not that mechanism.
 
 ## What "never reject a real code" is measured against
 

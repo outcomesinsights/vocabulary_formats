@@ -98,6 +98,25 @@ prose) but would be a forbidden false negative here, since I10 is a legitimate c
 the line, not width: a narrowing that costs no real code belongs HERE, and one that would cost even a
 single real code belongs in the caller.
 
+## THE LABEL REGISTRY: a missing row is NOT a decision
+
+`vocabulary_labels.tsv` is the ONLY place a vocabulary label is normalized — producers extract it
+verbatim (ruled 2026-08-04, `vocabulary_formats-wyf`). A lookup has **five** outcomes:
+
+- row, `mapped` → bind to `vocabulary_id`.
+- row, `unsupported` → ADJUDICATED: no OHDSI home. Drop, expected and counted.
+- row, `multi_vocabulary` → ADJUDICATED: the producer SPLITS the set (habitat rule 4).
+- row, `needs_context` → ADJUDICATED: the caller PICKS one of `candidates` from the paper's
+  context; a lookup that cannot pick must surface it, never default.
+- **NO ROW → UNADJUDICATED.** Nobody has looked. Surface and count it — an error condition that
+  needs a human, never a quiet drop.
+
+The first four are decisions; the fifth is the absence of one. A consumer that treats "not found"
+like a blank `vocabulary_id` silently loses a mappable code set and reports it identically to one
+we deliberately declined. **Never add a `status=unseen` row** — a row would mean someone looked, and
+`just lint` rejects any status outside the four. The miss report belongs in the PRODUCER; do not
+add producer code here.
+
 ## Tech Stack
 
 - Language: the PUBLISHED artifacts are data only (TSV/Parquet) — nothing a consumer loads is code.
