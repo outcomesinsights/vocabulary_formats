@@ -360,24 +360,39 @@ def selftest_labels():
 #   1. dashes made UNIFORM, never removed: Unicode category Pd, plus U+2212 MINUS SIGN, -> '-'.
 #      U+00AD SOFT HYPHEN is deliberately NOT a dash (an invisible line-break hint; turning it into
 #      '-' would invent a dash the author never printed). It is left exactly as it is.
-#   2. whitespace (str.isspace, so NBSP counts) collapses to one space, the ends are trimmed, and
-#      whitespace ADJACENT TO A DASH is dropped. Spaces elsewhere stay: 'ICD 10 CM' != 'ICD-10-CM'
-#      != 'ICD10CM'. Stripping dashes and spaces entirely was REJECTED.
+#   2. whitespace (the Unicode White_Space property: the 25 code points in WHITE_SPACE below, so
+#      NBSP counts) collapses to one space, the ends are trimmed, and whitespace ADJACENT TO A DASH
+#      is dropped. Spaces elsewhere stay: 'ICD 10 CM' != 'ICD-10-CM' != 'ICD10CM'. Stripping dashes
+#      and spaces entirely was REJECTED. NOT str.isspace() and NOT regex \s, which add U+001C-U+001F
+#      (the ASCII file/group/record/unit separators) by bidi class; Ruby has no such predicate, so
+#      the contract names a set both languages can enumerate (vocabulary_formats-ssu, 2026-09-30).
 #   3. case is ignored (str.casefold).
 EXTRA_DASHES = {"−"}  # MINUS SIGN is category Sm, but authors print it as a dash
-_WHITESPACE_RUN = re.compile(
-    r"\s+"
-)  # Python's \s on str is Unicode whitespace, NBSP included
+# The Unicode White_Space property, written out: every character the fold treats as whitespace.
+# Checked against the `regex` module's \p{White_Space} and Ruby's /\p{White_Space}/ (both 25).
+WHITE_SPACE = frozenset(
+    [chr(c) for c in range(0x0009, 0x000D + 1)]  # TAB, LF, VT, FF, CR
+    + ["\u0020", "\u0085", "\u00a0", "\u1680"]  # SPACE, NEL, NBSP, OGHAM SPACE MARK
+    + [chr(c) for c in range(0x2000, 0x200A + 1)]  # EN QUAD .. HAIR SPACE
+    + ["\u2028", "\u2029", "\u202f", "\u205f", "\u3000"]  # LS PS NNBSP MMSP IDEO.
+)
+# Only ever sees ' ': every WHITE_SPACE character is mapped to it first.
+_SPACE_RUN = re.compile(" +")
 _SPACE_AT_DASH = re.compile(r" ?- ?")
 
 
 def fold_label(label):
     """A label as every registry lookup compares it. See THE LABEL FOLD above."""
     s = "".join(
-        "-" if unicodedata.category(c) == "Pd" or c in EXTRA_DASHES else c
+        "-"
+        if unicodedata.category(c) == "Pd" or c in EXTRA_DASHES
+        else " "
+        if c in WHITE_SPACE
+        else c
         for c in label
     )
-    s = _WHITESPACE_RUN.sub(" ", s).strip()
+    # strip(" "), never bare strip(): that trims by str.isspace(), U+001C-U+001F included
+    s = _SPACE_RUN.sub(" ", s).strip(" ")
     return _SPACE_AT_DASH.sub("-", s).casefold()
 
 
@@ -399,6 +414,14 @@ FOLD_SELFTEST = [
     ("ICD10CM", "icd10cm"),  # ... and nothing is inserted or removed
     ("CPT/HCPCS", "cpt/hcpcs"),  # a slash is not a dash
     ("-ICD-", "-icd-"),  # a dash is never removed, even at an end
+    # whitespace is the Unicode White_Space property, NOT str.isspace() (vocabulary_formats-ssu)
+    ("ICD\u300010", "icd 10"),  # U+3000 IDEOGRAPHIC SPACE is White_Space
+    ("ICD\u008510", "icd 10"),  # U+0085 NEXT LINE is White_Space
+    ("\u3000ICD \u2013\u0085 10\u0085", "icd-10"),  # trimmed; dropped beside a dash
+    ("ICD\u001f10", "icd\u001f10"),  # U+001F UNIT SEPARATOR is NOT (isspace says yes)
+    ("ICD\u001c\u001d\u001e10", "icd\u001c\u001d\u001e10"),  # nor are U+001C-U+001E
+    ("\u001fICD\u001f", "\u001ficd\u001f"),  # and the ends are not trimmed of them
+    ("ICD \u001f 10", "icd \u001f 10"),  # a separator does not join a whitespace run
 ]
 
 # Hand-built label columns, and the collisions label_collisions must report for each as
@@ -411,6 +434,8 @@ UNIQUE_SELFTEST = [
     (["ICD 10 CM", "ICD 10  CM "], [(3, 2)]),
     (["ICD-10", "ICD­10", "ICD10"], []),  # soft hyphen: neither a dash nor nothing
     (["SNOMED", "LOINC", "Snomed", "SNOMED"], [(4, 2), (5, 2)]),
+    # White_Space folds together; U+001F does not
+    (["ICD 10", "ICD\u300010", "ICD\u001f10"], [(3, 2)]),
 ]
 
 
@@ -432,6 +457,12 @@ def selftest_fold():
         "    language re-implements. A fold that is wrong here lets two rows answer one lookup,\n"
         "    so it is checked against hand-computed answers every time the gate runs."
     )
+    if len(WHITE_SPACE) != 25:
+        fail(
+            "checks/lint.py WHITE_SPACE",
+            f"has {len(WHITE_SPACE)} code points, want the 25 of Unicode White_Space",
+            rule,
+        )
     for label, want in FOLD_SELFTEST:
         got = fold_label(label)
         if got != want:
