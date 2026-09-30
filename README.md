@@ -72,8 +72,10 @@ that hands you drift you cannot see.
 - **Rows are added** to both tables, and a `regexp` may be **narrowed**: still complete for its
   declared target, but admitting fewer non-codes than the version you last read.
 - **Columns may be added.** Read columns by NAME, never by position.
-- **`source` and `notes` are prose for humans.** They carry per-row measurements and reasons; do
-  not parse them.
+- **`notes`, and `source` in `vocabulary_formats`, are prose for humans.** They carry per-row
+  measurements and reasons; do not parse them. The exception is `source` in `vocabulary_labels`,
+  which has a pinned grammar that `just lint` parses (see that table's columns below); a row
+  seen again gains an entry there, so expect it to grow.
 
 ### Retired artifacts
 
@@ -211,17 +213,21 @@ Columns:
 
 - `label` — the vocabulary name exactly as it appeared in the source. Never normalized; lookups
   should normalize case/whitespace on the consumer side.
+
 - `vocabulary_id` — the target in our substrate, which **includes OI supplemental vocabularies**
   (e.g. `CPT4_HCPCS`), not just stock OHDSI ids. Filled if and only if `status` is `mapped`. Blank
   in the TSV reads back as NULL from the Parquet; both mean the same thing.
+
 - `candidates` — for a `needs_context` row only, the vocabularies the label could mean, as
   `|`-separated `vocabulary_id`s (e.g. `ICD10CM|ICD10|ICD10PCS|ICD10GM|ICD10CN`): at least two,
   none repeated, each one present in our substrate. Blank on every other row. Machine-readable, so
   split it on `|`; do not parse `notes` for it. (Whether `multi_vocabulary` rows will also list
   their components here is deliberately undecided — seed `vfm-bmg`. Today they are blank.)
+
 - `status` — why the row is where it is. A CLOSED set of four values; a value outside it is a bug,
   and `just lint` fails on one. The distinction matters because three of them share a blank
   `vocabulary_id` for entirely different reasons:
+
   - `mapped` — resolves to a `vocabulary_id`.
   - `unsupported` — not in OHDSI or our supplementals *as of now*. Revisit when a release adds it.
   - `multi_vocabulary` — the label names SEVERAL vocabularies at once. The remedy is a
@@ -233,8 +239,30 @@ Columns:
     concept_ids, papers print either under that label, and so no single mapping is right for every
     paper (ruled 2026-09-30). Conflating this with `multi_vocabulary` would send a set that needs a
     pick to a splitter.
-- `source` — where the label was observed, with counts.
-- `notes` — anything a future reader needs so they don't "fix" a deliberate decision.
+
+- `source` — where the label was observed, as provenance a machine can read (ruled 2026-09-30).
+  The value is one or more **entries** separated by `|` — the same list delimiter as `candidates`,
+  so `|` means *list* everywhere in this table. Each entry is:
+
+  ```
+  <producer>:<run>[;<key>=<count>]...
+  ```
+
+  - `<producer>` — the tool that saw the label: letters, digits, `_`, `.`, `-` (`litmine`,
+    `code_collector`).
+  - `<run>` — which run of it: anything without `;`, `|` or whitespace (`pilot-2026-07`,
+    `harvest-2026-09-10`, `vocabulary_labels.py@<sha>` for a row moved from a producer's code).
+  - `;<key>=<count>` — optional, repeatable, keys unique within the entry, counts non-negative
+    integers **for that run alone** (`sets=117;papers=10`).
+
+  e.g. `litmine:pilot-2026-07;sets=117;papers=10|code_collector:harvest-2026-09-10;sets=267;papers=84`.
+  **A later run APPENDS an entry and never overwrites one**, and no run appears twice on a row —
+  counts are per run, so a repeated run would double-count it. `just lint` parses every entry of
+  every row and fails on one that does not fit.
+
+- `notes` — anything a future reader needs so they don't "fix" a deliberate decision, and **the
+  evidence for the row** — how its target was checked, not just what the target is (see the intake
+  loop below).
 
 Note that a mapping may deliberately **widen**: `CPT` maps to `CPT4_HCPCS`, which covers CPT *and*
 HCPCS. That is correct for binding — a CPT code resolves in the hybrid — and costs nothing, because
@@ -267,6 +295,40 @@ consumer-side guess.
 There is deliberately **no `unseen` status**, and there never will be: a row means someone looked.
 `just lint` rejects any status outside the four. Emitting the report of unseen labels is the
 **producer's** job; this repository holds data, not that mechanism.
+
+### The intake loop: how an unseen label becomes a row
+
+Since the 2026-08-04 ruling — *"extract vocabulary as it is written in the paper and we will use
+that information to form a comprehensive mapping in vocabulary_formats"* — this table is a
+**product the harvest keeps feeding**, not a list written once. A label travels:
+
+1. **The producer emits the unseen labels, with counts.** A harvest (litmine, code_collector)
+   reports every label its lookup returned *no row* for, with how many code sets and papers carried
+   it in that run. This is the producer's code, never this repository's.
+2. **A domain agent adjudicates it.** Per habitat routing, the OHDSI-vocabulary specialist (Odie)
+   or the vocabulary-pipeline specialist (Vincent) decides the status and authors the target —
+   `vocabulary_id`, `candidates`, or a blank with its reason — and **validates it against the real
+   concept table**.
+3. **The row lands here, with provenance and evidence.** `label` verbatim; `source` gets an entry
+   for the run that surfaced it (or, for a label already on a row, an entry is **appended** to that
+   row's `source`); `notes` records the evidence.
+4. **`make all` regenerates the parquet**, and `just lint` and `just test` must pass: lint checks the
+   row's shape and its `source` grammar; test checks that every id it names exists in the substrate.
+
+**`notes` must carry EVIDENCE, not an assertion.** A target stated without being checked against
+real `concept_code`s is a guess. The existing rows set the bar:
+
+- `NHIS (Korean National Health Insurance Service) procedure code` → `EDI`: *"52 of the 99 distinct
+  pilot codes (HA401, HA402, ...) exact-match EDI concept_codes and the rest share its format."*
+- `DRG` → `DRG`: *"all 26 distinct pilot codes exact-match DRG concept_codes."*
+- An `unsupported` row names what was checked and came up empty: *"Checked against EDI, KCD7, KDC,
+  KNHIS and Korean Revenue Code - no match."*
+
+Exact-matching code strings is evidence, not proof — the Japanese extent-of-disease row records
+that its codes collide 4/4 with NAACCR and DRG by accident. Resolve a label by what it *means*, and
+use the concept table to confirm it. For a row moved here from a producer's own code (for example
+code_collector's label tables), the ruling that decided it counts as the evidence: cite it, with its
+date.
 
 ## What "never reject a real code" is measured against
 

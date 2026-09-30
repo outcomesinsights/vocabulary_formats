@@ -14,9 +14,9 @@ Every check here was previously protected by nothing but memory:
   columns / tabs    the file is read as TSV by every consumer
   targets declared  a row with no entry in validation_targets.json is silently never validated
   label rows        vocabulary_labels: status is a known value, vocabulary_id is filled IFF mapped,
-                    candidates IFF needs_context (2+ distinct ids). Consumers in two languages
-                    branch on status, so an unknown value is a row that silently falls through
-                    every branch (vocabulary_formats-yq4).
+                    candidates IFF needs_context (2+ distinct ids), and every `source` entry
+                    parses. Consumers in two languages branch on status, so an unknown value is a
+                    row that silently falls through every branch (vocabulary_formats-yq4, -7dl).
 
 Regexps are compiled with Python's `re`. The column is documented as PCRE, but the live consumers
 (litmine, codesistant) are Python, so Python is the compiler that decides whether a row works.
@@ -42,8 +42,15 @@ TABLES = {
 # has adjudicated has NO ROW, because a row would mean someone looked (vocabulary_formats-wyf).
 LABEL_STATUSES = {"mapped", "unsupported", "multi_vocabulary", "needs_context"}
 
-# '|' separates the ids in `candidates` (ruled 2026-09-30).
+# '|' means LIST everywhere in vocabulary_labels.tsv: the ids in `candidates` and the entries in
+# `source` (ruled 2026-09-30).
 LIST_DELIMITER = "|"
+
+# One `source` ENTRY: <producer>:<run>, then optional ;key=count pairs whose counts are per run.
+# e.g. litmine:pilot-2026-07;sets=117;papers=10  or  code_collector:vocabulary_labels.py@1a2b3c4
+SOURCE_ENTRY = re.compile(
+    r"(?P<producer>[A-Za-z0-9_.-]+):(?P<run>[^;|\s]+)(?P<counts>(?:;[a-z_]+=[0-9]+)*)"
+)
 
 LABEL_RULE = """
     RULE: a registry row states ONE adjudicated decision, and its columns must agree with it:
@@ -54,6 +61,12 @@ LABEL_RULE = """
       needs_context     vocabulary_id blank, candidates = 2+ distinct '|'-separated ids; the
                         caller PICKS one per paper
     A label nobody has adjudicated gets NO ROW -- never a status of its own.
+"""
+
+SOURCE_RULE = """
+    RULE: `source` is '|'-separated ENTRIES, each <producer>:<run>[;key=count...], e.g.
+    litmine:pilot-2026-07;sets=117;papers=10. A later run APPENDS an entry and never overwrites
+    one, and its counts are that run's alone -- so one run appearing twice double-counts it.
 """
 
 ANCHOR_RULE = """
@@ -200,9 +213,31 @@ def selftest_scanner():
             )
 
 
+def source_problems(source):
+    """Why a `source` value breaks the entry grammar, as a list of messages (empty = clean)."""
+    if not source.strip():
+        return ["source is empty; every row records where its label was observed"]
+    problems, runs = [], set()
+    for entry in source.split(LIST_DELIMITER):
+        m = SOURCE_ENTRY.fullmatch(entry)
+        if not m:
+            problems.append(
+                f"source entry {entry!r} is not <producer>:<run>[;key=count...]"
+            )
+            continue
+        keys = [pair.split("=")[0] for pair in m["counts"].split(";")[1:]]
+        if len(keys) != len(set(keys)):
+            problems.append(f"source entry {entry!r} repeats a count key")
+        run = (m["producer"], m["run"])
+        if run in runs:
+            problems.append(f"source names run {':'.join(run)!r} twice")
+        runs.add(run)
+    return problems
+
+
 def label_row_problems(row):
     """What is wrong with one vocabulary_labels row, as [(column, message)] (empty = clean)."""
-    problems = []
+    problems = [("source", msg) for msg in source_problems(row["source"])]
     status = row["status"]
     if status not in LABEL_STATUSES:
         # The other columns are judged RELATIVE to status; against an unknown one they would only
@@ -271,6 +306,21 @@ LABEL_SELFTEST = [
     ("", "ICD10| ICD10CM", "needs_context", _OK_SOURCE, ["candidates"]),
     ("", "ICD9CM|ICD10CM", "multi_vocabulary", _OK_SOURCE, ["candidates"]),  # vfm-bmg
     ("ICD10CM", "ICD10CM|ICD10", "mapped", _OK_SOURCE, ["candidates"]),
+    ("ICD10CM", "", "mapped", "", ["source"]),
+    ("ICD10CM", "", "mapped", "litmine pilot 2026-07", ["source"]),
+    ("ICD10CM", "", "mapped", "litmine:pilot;sets=many", ["source"]),
+    ("ICD10CM", "", "mapped", "litmine:pilot;sets=1;sets=2", ["source"]),
+    ("ICD10CM", "", "mapped", "litmine:pilot;sets=1|litmine:pilot;sets=2", ["source"]),
+    ("ICD10CM", "", "mapped", _OK_SOURCE + "|", ["source"]),
+    ("ICD10CM", "", "mapped", _OK_SOURCE + ",code_collector:h1", ["source"]),
+    (
+        "ICD10CM",
+        "",
+        "mapped",
+        "code_collector:vocabulary_labels.py@1a2b3c4|"
+        "code_collector:harvest-2026-09-10;sets=267;papers=84",
+        [],
+    ),
 ]
 
 
@@ -302,7 +352,7 @@ def check_labels(rows):
             fail(
                 f"{LABELS.name}:{lineno} {row['label']!r}",
                 message,
-                LABEL_RULE,
+                SOURCE_RULE if column == "source" else LABEL_RULE,
             )
 
 

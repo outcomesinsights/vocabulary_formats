@@ -159,8 +159,9 @@ declared. It self-tests its own scanner against hand-built patterns first, becau
 enforcing those two rules can be silently wrong like any other. For `vocabulary_labels.tsv` it
 enforces the registry's row contract (`vocabulary_formats-yq4`, 2026-09-30): `status` is one of
 `mapped` / `unsupported` / `multi_vocabulary` / `needs_context`; `vocabulary_id` is filled IFF
-`mapped`; `candidates` IFF `needs_context`, with 2+ distinct `|`-separated ids — self-tested on
-hand-built bad rows the same way.
+`mapped`; `candidates` IFF `needs_context`, with 2+ distinct `|`-separated ids; and every `source`
+entry parses as `<producer>:<run>[;key=count...]`, entries `|`-separated, no run twice
+(`vocabulary_formats-7dl`) — self-tested on hand-built bad rows the same way.
 
 **`just test`** replaces the hand-run snippet this section used to carry. It scores every row against
 its OWN declared target — `checks/validation_targets.json`, where each target and every deliberate
@@ -216,9 +217,12 @@ regexes to 34 rows covering the non-claims vocabularies; `vocabulary_formats-e5s
 - Make each row's **target** legible without reading the README. Today "is this row for claims or for
   the full vocabulary?" is inferable only from the variant suffix and the `notes` prose. A `target`
   column, or a documented naming convention, would make rule 1 checkable rather than remembered.
-- Rows for labels `litmine` has not met yet. The registry is a *registry*: an unseen label gets
-  appended verbatim, then mapped or left blank. `validate.py` prints unmapped labels for exactly this
-  purpose — feed its output back here.
+- Rows for labels the harvest has not met yet. The registry is **harvest-fed** (ruled 2026-08-04):
+  the producer emits unseen labels with counts → a domain agent (Odie or Vincent, per habitat
+  routing) adjudicates the status and validates the target against the concept table → the row
+  lands here with a `source` entry and **evidence in `notes`**, not an asserted target → `make all`,
+  `just lint`, `just test`. A label seen again APPENDS a `source` entry; it never overwrites one.
+  The full loop and the `source` grammar are in README's registry section.
 
 ## Domain Concepts
 
