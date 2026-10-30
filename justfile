@@ -11,7 +11,8 @@
 # way icd10cm and ohdsi_supplemental_vocabs do it. The Makefile still owns TSV -> parquet; this
 # file does not replace it, and `just lint` deliberately does not run it (see checks/lint.py).
 
-python := "uv run --no-project --with duckdb python"
+# duckdb is pinned below 2: the stock 2.x wheel dies with SIGILL on titan (ruled 2026-10-28).
+python := "uv run --no-project --with 'duckdb<2' python"
 
 # so `just prose --try 'X=\w{3}'` reaches the script intact instead of through the shell twice
 set positional-arguments

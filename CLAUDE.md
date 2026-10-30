@@ -132,7 +132,7 @@ gets a `source` entry on the existing row, not a row. Bare `Read` has deliberate
 - Language: the PUBLISHED artifacts are data only (TSV/Parquet) — nothing a consumer loads is code.
   `checks/` holds the gate (Python), which no consumer imports; the tables stay polyglot.
 - Framework: none. `justfile` is the front door, `Makefile` still owns TSV -> parquet.
-- Key dependencies: duckdb only, and never installed — `uv run --no-project --with duckdb`, the same
+- Key dependencies: duckdb only, and never installed — `uv run --no-project --with 'duckdb<2'`, the same
   way icd10cm and ohdsi_supplemental_vocabs do it. No pyproject, no lockfile, nothing to maintain.
 
 ## Purpose
