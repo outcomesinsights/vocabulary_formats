@@ -1,10 +1,12 @@
 ---
 id: vfm-5g7
 title: 'Non-conforming NDCs (21 CFR 207.33(a): an NDC is numeric): the three lower-case oxygen codes are excluded as worked examples; whether the other 36 follow is not ruled'
-status: captured
+status: resolved
 type: decision
 created_at: 2026-10-31T14:00:02.452446+00:00
-updated_at: 2026-10-31T14:08:41.628701+00:00
+updated_at: 2026-10-31T14:13:31.420468+00:00
+resolved_at: 2026-10-31T14:13:31.420459+00:00
+resolution: Three lower-case oxygen codes excluded from NDC.ALPHANUM's target as non-conforming under 21 CFR 207.33(a) (commit 81f449a). The other 36 non-numeric NDC codes stay in the target (ruled 2026-10-31, vfm-39i).
 tags:
   - ndc
   - cfr-207-33
@@ -240,3 +242,15 @@ kept the code numeric. The NDC rows here will need a 12-digit form before 2033.
   `ndc-nonnumeric-spl-20261031-070503.log`, `ndc-nonnumeric-spl2-20261031-070514.log`,
   `ndc-openfda-labelers-20261031-070533.log`, `ndc-nonnumeric-twins-20261031-070615.log`,
   `cfr-207-35-2012-20261031-070650.log`, `fr-2016-ndc-alnum-*.log`, `fr-ndc-detail-*.log`.
+
+## RULED 2026-10-31 (Ryan): keep all 36 in NDC.ALPHANUM
+
+Ryan, verbatim: "for ndcalphanum, keep all 36".
+
+All 36 non-numeric, upper-case NDC codes stay in `NDC.ALPHANUM`'s target. That includes the 12
+legacy Mallinckrodt NDCs and the 27 codes that were never NDCs. The three lower-case oxygen codes
+stay excluded. `NDC.ALPHANUM` is not retired. The 207.33(a) evidence above stays as the record of
+which codes are legacy NDCs and which are not, in case the question returns.
+
+Ryan will discuss the codesistant side of case sensitivity with a codesistant agent himself
+(codesistant seed `cst-gp2`).
