@@ -93,6 +93,13 @@ parallel edit tightened `HCPCS` to `[A-V]`, which rejects the real code X1002. B
 by testing against the full Athena concept table. **Validate any regex change against real
 concept_codes before committing** (see Commands).
 
+**Rows are CASE-EXACT** (ruled 2026-10-31, seed `vfm-8k1`; built in `vocabulary_formats-7a1`).
+`i16.5` is not an ICD-10-CM code. A row that is case-insensitive declares it with the scoped flag
+`(?i:...)`. No row does today, because no published code in any vocabulary here is lower case
+except the SNOMED UUIDs, which are ONLY lower case (`SNOMED.WITHRETIRED` uses `[0-9a-f]`). Never
+write `\w` or a lower-case range in a regexp again: `\w` admits lower case and `_`. A caller
+whose source writes codes in lower case changes the case itself, in a named step.
+
 Related: usage-specific strictness belongs in the CALLER, never here. A >=4-character floor for
 *scanning* free text is correct in a scanner (bare 3-char categories appear in ordinary disease
 prose) but would be a forbidden false negative here, since I10 is a legitimate code. Completeness is
@@ -171,8 +178,9 @@ make all     # regenerate every parquet after editing a TSV (just lint checks th
 
 **`just lint`** enforces what nothing else did: every regexp compiles, **no anchors** and **no
 top-level alternation** in the regexp column (both invariants were measured once and then protected
-only by memory), unique keys, parquet in sync with the TSV, and every row's validation target
-declared. It self-tests its own scanner against hand-built patterns first, because the code
+only by memory), **no inline flag except the scoped `(?i:...)`** (the case declaration,
+`vocabulary_formats-7a1`), unique keys, parquet in sync with the TSV, and every row's validation
+target declared. It self-tests its own scanner against hand-built patterns first, because the code
 enforcing those two rules can be silently wrong like any other. For `vocabulary_labels.tsv` it
 enforces the registry's row contract (`vocabulary_formats-yq4`, 2026-09-30): `status` is one of
 `mapped` / `unsupported` / `multi_vocabulary` / `needs_context`; `vocabulary_id` is filled IFF

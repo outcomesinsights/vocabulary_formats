@@ -9,6 +9,8 @@ Every check here was previously protected by nothing but memory:
   compiles          a row that does not compile takes down every consumer that loads the table
   no anchors        stripped from all 34 rows 2026-08-12; the caller binds the boundary now
   no top-level |    asserted once when the anchors were stripped, enforced by nothing since
+  inline flags      a row is case-exact; the ONLY inline flag allowed is the scoped (?i:...),
+                    which declares case-insensitivity (vfm-8k1, vocabulary_formats-7a1)
   unique key        a duplicate vocabulary_id makes "the regexp for X" ambiguous
   parquet in sync   TSV and parquet are BOTH the published interface (vocabulary_formats-t5u)
   columns / tabs    the file is read as TSV by every consumer
@@ -87,6 +89,15 @@ ANCHOR_RULE = """
     the caller supplies it.
 """
 
+FLAG_RULE = """
+    RULE: a regexp is CASE-EXACT unless the row declares otherwise, and the only declaration is
+    the SCOPED flag (?i:...) (Ryan, 2026-10-31, seed vfm-8k1). A GLOBAL flag such as (?i) is
+    refused: every caller wraps the row as \\A(?:pattern)\\z, which puts the flag inside a group.
+    Python 3.11+ then refuses to compile it, and Ruby applies it to the rest of the group, so the
+    row means two different things to two consumers. Any other inline flag is refused too: the
+    letters differ by dialect (Ruby's m is Python's s). Write (?i:...) around exactly the part
+    that is case-insensitive.
+"""
 ALTERNATION_RULE = """
     RULE: every row must be a SINGLE SELF-CONTAINED expression. A caller that writes ^pattern$
     around a bare `a|b` gets `(^a)|(b$)` -- the anchors bind to the first branch only, and the
@@ -142,14 +153,36 @@ def bound(pattern):
     return r"\A(?:%s)\Z" % pattern
 
 
+def inline_flag(pattern, i):
+    """The inline-flag group that opens at pattern[i] == '(', or None.
+
+    A flag group is `(?` + flag letters (optionally `-` letters) + `)` (global) or `:` (scoped).
+    `(?:`, `(?=`, `(?!`, `(?<`, `(?P<` and `(?#` are not flag groups. Returns the group's
+    opening text, e.g. '(?i)' or '(?i:'.
+    """
+    if pattern[i + 1 : i + 2] != "?":
+        return None
+    j = i + 2
+    while j < len(pattern) and (pattern[j].isalpha() or pattern[j] == "-"):
+        j += 1
+    letters = pattern[i + 2 : j]
+    if not letters or letters.startswith("P") or j >= len(pattern):
+        return None
+    if pattern[j] in "):":
+        return pattern[i : j + 1]
+    return None
+
+
 def scan_pattern(pattern):
-    """Walk a regexp once. Returns (anchors, top_level_alternations) as [(offset, token)].
+    """Walk a regexp once. Returns (anchors, top_level_alternations, bad_flags) as
+    [(offset, token)].
 
     Tracks escapes, character classes and group depth so that the legitimate uses are not
     flagged: `^` at the head of a class is negation, `$` inside a class is a literal dollar,
-    and `|` inside any group is ordinary alternation.
+    and `|` inside any group is ordinary alternation. `bad_flags` is every inline-flag group
+    except the one allowed declaration, the scoped `(?i:`.
     """
-    anchors, alternations = [], []
+    anchors, alternations, bad_flags = [], [], []
     depth, in_class, i = 0, False, 0
     while i < len(pattern):
         ch = pattern[i]
@@ -178,12 +211,15 @@ def scan_pattern(pattern):
             anchors.append((i, ch))
         elif ch == "(":
             depth += 1
+            flag = inline_flag(pattern, i)
+            if flag is not None and flag != "(?i:":
+                bad_flags.append((i, flag))
         elif ch == ")":
             depth -= 1
         elif ch == "|" and depth == 0:
             alternations.append((i, "|"))
         i += 1
-    return anchors, alternations
+    return anchors, alternations, bad_flags
 
 
 # The scanner is the check with teeth, so it gets hand-built inputs with hand-computed answers.
@@ -207,9 +243,42 @@ SCANNER_SELFTEST = [
 ]
 
 
+# Inline flags, the same discipline: (pattern, refused flag tokens). The allowed declaration and
+# every group that only LOOKS like a flag must pass; every global flag and every other letter fails.
+FLAG_SELFTEST = [
+    (r"(?i:[A-Z]\d{4})", []),  # the one allowed declaration
+    (r"[A-Z](?i:[a-z]{2})", []),  # ... scoped to part of a row
+    (
+        r"(?i)[A-Z]\d{4}",
+        ["(?i)"],
+    ),  # global: what Python 3.11 refuses inside \A(?:...)\z
+    (r"[A-Z](?i)x", ["(?i)"]),  # global, not at the start
+    (r"(?m:^x)", ["(?m:"]),  # scoped, but m means different things in Ruby and Python
+    (r"(?ix)a", ["(?ix)"]),
+    (r"(?-i:A)", ["(?-i:"]),  # nothing to turn off: rows are already case-exact
+    (r"(?:a|b)", []),  # non-capturing group, not a flag
+    (r"(?=a)b", []),  # lookahead
+    (r"(?<!a)b", []),  # lookbehind
+    (r"(?P<x>a)", []),  # Python named group
+    (r"\(?i\)", []),  # escaped parens are literals: an optional '(', 'i', ')'
+    (r"\((?i)", ["(?i)"]),  # a literal '(' and THEN a real global flag
+    (r"[(?i)]", []),  # inside a class it is four literal characters
+]
+
+
 def selftest_scanner():
+    for pattern, want_flags in FLAG_SELFTEST:
+        got = [token for _, token in scan_pattern(pattern)[2]]
+        if got != want_flags:
+            fail(
+                "checks/lint.py scan_pattern",
+                f"flag self-test failed on {pattern!r}: refused {got!r} (want {want_flags!r})",
+                "    RULE: the flag scanner enforces the case declaration (vfm-8k1). A scanner\n"
+                "    that is wrong reports green over a broken table, so it is checked against\n"
+                "    hand-computed answers every time the gate runs.",
+            )
     for pattern, want_anchors, want_alts in SCANNER_SELFTEST:
-        anchors, alternations = scan_pattern(pattern)
+        anchors, alternations, _ = scan_pattern(pattern)
         got_anchors = [token for _, token in anchors]
         if got_anchors != want_anchors or len(alternations) != want_alts:
             fail(
@@ -627,7 +696,13 @@ def check_regexps(rows):
             fail(f"{FORMATS.name}:{lineno} {vid}", "has an empty regexp")
             continue
 
-        anchors, alternations = scan_pattern(pattern)
+        anchors, alternations, bad_flags = scan_pattern(pattern)
+        for offset, token in bad_flags:
+            fail(
+                f"{FORMATS.name}:{lineno} {vid}",
+                f"regexp contains the INLINE FLAG {token!r} at offset {offset}: {pattern}",
+                FLAG_RULE,
+            )
         for offset, token in anchors:
             fail(
                 f"{FORMATS.name}:{lineno} {vid}",
@@ -834,7 +909,10 @@ def check_targets(rows):
 def main():
     print(f"lint: {ROOT}")
     selftest_scanner()
-    print(f"  scan_pattern self-test: {len(SCANNER_SELFTEST)} hand-built patterns")
+    print(
+        f"  scan_pattern self-test: {len(SCANNER_SELFTEST)} hand-built patterns, "
+        f"{len(FLAG_SELFTEST)} hand-built inline-flag patterns"
+    )
     selftest_labels()
     print(f"  label_row_problems self-test: {len(LABEL_SELFTEST)} hand-built rows")
     selftest_fold()
@@ -872,7 +950,7 @@ def main():
 
     if not failures:
         print(
-            "\nOK: no anchors, no top-level alternation, unique keys, parquet in sync,"
+            "\nOK: no anchors, no top-level alternation, no inline flag but (?i:...),\n    unique keys, parquet in sync,"
         )
         print("    every row's validation target declared, every label row consistent,")
         print(

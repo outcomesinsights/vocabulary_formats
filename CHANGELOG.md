@@ -19,6 +19,58 @@ and (b) the real corpus tokens that motivated it. Reading a regex is not measuri
 
 ______________________________________________________________________
 
+## 2026-10-31 — every row is case-exact (`vocabulary_formats-7a1`)
+
+**Edge case.** In a conceptql session Ryan ruled that `i16.5` must not pass as an ICD-10-CM code:
+"if a code should be case insensitive, the vocabulary_format regexp should explicitly list case
+insensitivity. call me a stickler, but I think ICD-10-CM code i16.5 just doesn't look right and
+shouldn't be repected" (seed `vfm-8k1`). Before this change, 23 rows admitted lower case through
+`[A-Za-z]`, `[a-z]` or `\w`. So `i16.5` passed `ICD10CM`, and `ICD10PCS` accepted `0dtj0zz` while
+its own `.BILLABLE` variant did not.
+
+**The rule now.** A row is case-exact. A row that is case-insensitive declares it with the scoped
+flag `(?i:...)`. `just lint` refuses a global flag such as `(?i)` and every other inline flag. No
+row declares `(?i:...)`: the Athena census (release 20260625) found no lower-case code in any
+vocabulary with a row, except the SNOMED UUIDs and three NDC codes.
+
+**The change.** Every `\w` and every lower-case range became an explicit class: `[0-9A-Z]` for
+`\w`, and the upper-case half of each letter range. `SNOMED.WITHRETIRED` went the other way, to
+lower-case hex `[0-9a-f]`, because all 464,018 published UUIDs are lower-case hex. Rows changed:
+`ICD10CM`, `ICD10CM.DOTLESS`, `ICD10`, `ICD10.DOTLESS`, `ICD10PCS`, `HCPCS`,
+`HCPCS.WITHMODIFIERS`, `HCPCS_MODIFIER`, `CPT4`, `CPT4.WITHMODIFIERS`, `CPT4_MODIFIER`,
+`CPT4_HCPCS`, `CPT4_HCPCS.WITHMODIFIERS`, `CPT4_HCPCS.CODEONLY`, `CPT4_HCPCS_MODIFIER`,
+`NDC.ALPHANUM`, `ATC`, `SNOMED.WITHRETIRED`, `ICDO3`, `ICDO3.CODEONLY`, `ICD03_Topography`,
+`ICD03_Topography.DOTLESS`, `EDI`. Each row's `notes` carries its old pattern and its numbers.
+
+**False negatives.** `just test` before and after: 38 of 38 rows, 9,798,861 codes, **0 false
+negatives**. One exclusion was added first, on 2026-10-31: the three lower-case NDC codes
+`1549912340a`, `1549912340b` and `5812800010a` are excluded from `NDC.ALPHANUM`'s target, for case
+only (seed `vfm-5g7`). Their letters are respected, and `1549912340A` passes.
+
+**False positives removed** (`just prose`, FY2026 tabular, 21,259 tokens; the paper corpus was not
+on this machine):
+
+| row                                                         | tokens         | ordinary words |
+| ----------------------------------------------------------- | -------------- | -------------- |
+| `ICD10PCS`                                                  | 3,795 → 1,696  | 2,325 → 258    |
+| the three modifier rows and the three `.WITHMODIFIERS` rows | 244–245 → 168  | 111 → 42       |
+| `CPT4`, `CPT4_HCPCS`, `EDI`                                 | 1 → 0          | 0 → 0          |
+| `ATC`                                                       | 744 → 730      | 27 → 13        |
+| `ICD10CM`, `ICD10`, `ICD10.DOTLESS`, `ICD10CM.DOTLESS`      | 4–5 fewer each | unchanged      |
+
+The ICD rows lost `M5a`, `M5b`, `q11`, `q34` and `p110d`: chromosome bands, a gene product and
+leukaemia subtypes, none of them codes. `ATC` lost the 14 single lower-case letters.
+
+**Supersedes** the `ICD10PCS` note "Case stays permissive on purpose", and the 2026-08-27 entry's
+paragraph "Not changed, though it looked worse". The note predicted that the upper-case pattern
+would cut the tabular figure to 1,695. The measured figure is 1,696, on a corpus 11 tokens larger.
+
+**For consumers.** Do not compile a row with an ignore-case flag. It overrides the row. If a
+source writes codes in lower case, change the case in a named step before validation. See the
+README section *The patterns are case-exact*.
+
+______________________________________________________________________
+
 ## 2026-08-27 — `ICD10CM`, `ICD10CM.DOTLESS`: position 3 and the `QA` branch
 
 **Edge case.** A human reviewer working through a PMC sleep-apnea paper (`PMC10359192`) was being

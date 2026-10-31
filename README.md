@@ -56,6 +56,10 @@ that hands you drift you cannot see.
 - **`regexp` carries no anchors and no top-level alternation**, so `\A(?:pattern)\z` — or your
   language's equivalent, in the table two sections down — is always safe to build. `just lint`
   enforces both.
+- **`regexp` is CASE-EXACT** unless the row declares case-insensitivity with the scoped flag
+  `(?i:...)`. No row declares it today. Do not add your own ignore-case flag: it overrides what
+  the row says. `just lint` refuses any other inline flag. See *The patterns are case-exact*
+  below.
 - **No false negative inside a row's declared target.** Every row is scored against the real
   `concept_code` values it claims to cover, and every deliberate exclusion is named with its
   evidence in `checks/validation_targets.json`. `just test` enforces it.
@@ -111,7 +115,7 @@ Corollary for the two tables: `vocabulary_formats.tsv` answers *"does this look 
 
 **Every `regexp` value matches a complete code and nothing more, but it is stored without `^`, `$`, `\A`, `\z` or `\b`. Binding it to a boundary is the caller's job, and the caller must do it.**
 
-Do not treat this as a small ergonomic detail. Used bare, a pattern matches a code *inside* a longer string, so `I10 and some trailing prose` passes the `ICD10CM` row. And for the short rows it is far worse than that: `HCPCS_MODIFIER`, `CPT4_MODIFIER` and `CPT4_HCPCS_MODIFIER` are all `\w{2}`, and `DRG` is `\d{3}`. Unanchored, `\w{2}` is true for **any** value containing two consecutive word characters — the check does not weaken, it stops existing.
+Do not treat this as a small ergonomic detail. Used bare, a pattern matches a code *inside* a longer string, so `I10 and some trailing prose` passes the `ICD10CM` row. And for the short rows it is far worse than that: `HCPCS_MODIFIER`, `CPT4_MODIFIER` and `CPT4_HCPCS_MODIFIER` are all `[0-9A-Z]{2}`, and `DRG` is `\d{3}`. Unanchored, `[0-9A-Z]{2}` is true for **any** value containing two consecutive capital letters or digits — the check does not weaken, it stops existing.
 
 This is deliberate, because the correct anchor differs by language and by job:
 
@@ -126,6 +130,31 @@ This is deliberate, because the correct anchor differs by language and by job:
 To *find* codes inside free text rather than validate a known string, anchor on code boundaries instead of string ends — `(?<![0-9A-Za-z])(?:PATTERN)(?![0-9A-Za-z])`. Shape alone is rarely enough for prose: a scanner usually also needs context (a parenthetical, or a lead-in such as "codes" or "classifiable to"). See the Principles in `CLAUDE.md`.
 
 **Wrap the pattern in a non-capturing group when you anchor it.** Several rows are alternations, and `\A` + `a|b` + `\z` binds the anchors to the first branch only. Every row is a single self-contained expression so that `(?:…)` always works — keep it that way when adding rows.
+
+## The patterns are case-exact — a row declares case-insensitivity with `(?i:...)`
+
+**A `regexp` matches the case it is written in.** `i16.5` does not look like an ICD-10-CM code, and
+the `ICD10CM` row rejects it (Ryan, 2026-10-31, seed `vfm-8k1`). A row that is case-insensitive
+says so with the scoped flag `(?i:...)` around the part that ignores case. Python, Ruby, PCRE and
+RE2 (DuckDB) all accept that form. No row declares it today: a census of the full Athena concept
+table found no lower-case code in any vocabulary with a row, except the SNOMED UUIDs.
+
+Case-exact does not always mean upper case. `SNOMED.WITHRETIRED` admits UUIDs in lower-case hex
+only, because that is how all 464,018 of them are published.
+
+What this means for a consumer:
+
+- **Do not compile a row with an ignore-case flag** (`re.IGNORECASE`, Ruby `/i`, `(?i)`). The flag
+  overrides the row's own declaration, so `i16.5` would pass again.
+- **If your source writes codes in lower case, change the case yourself**, in a named and recorded
+  step before validation. That is a decision about your source, not about the vocabulary.
+- **A detector that scans prose** may ignore case on purpose. That is a caller decision too.
+- `just lint` refuses a global flag such as `(?i)`. Every caller wraps a row in a group, and
+  Python 3.11 refuses to compile a global flag there, while Ruby applies it to the rest of the
+  group. It refuses every other inline flag as well, because the letters differ by dialect.
+
+Changed 2026-10-31 (`vocabulary_formats-7a1`): before that date, many rows admitted lower case
+through `[A-Za-z]` or `\w`. See `CHANGELOG.md`.
 
 ## Skewed Towards Valid — permissive is the FLOOR, not the goal
 
@@ -477,6 +506,7 @@ code.
 
 ```bash
 just lint    # THE GATE. Structural: regexps compile, no anchors, no top-level alternation,
+             # no inline flag except the scoped (?i:...) case declaration,
              # unique keys, parquet in sync with the TSV, every row's target declared,
              # every vocabulary_labels row's status/vocabulary_id/candidates consistent,
              # every label unique after the label fold,
@@ -488,7 +518,7 @@ just test    # The false-negative harness above, plus: every id vocabulary_label
              # on the machine.
 just prose   # The prose-adversary report. What each row admits from real running text.
              # Never fails; score a candidate beside the row it would replace with
-             #   just prose --try 'ICD10=[A-Za-z][0-9][0-9A-Za-z](\.\w{1,4})?'
+             #   just prose --try 'ICD10=[A-Z][0-9][0-9A-Z](\.[0-9A-Z]{1,4})?'
 make all     # Regenerate every parquet after editing a TSV (`just parquet` calls this).
 ```
 
