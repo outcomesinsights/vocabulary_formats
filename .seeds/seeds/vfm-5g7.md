@@ -4,7 +4,7 @@ title: 'Non-conforming NDCs (21 CFR 207.33(a): an NDC is numeric): the three low
 status: captured
 type: decision
 created_at: 2026-10-31T14:00:02.452446+00:00
-updated_at: 2026-10-31T14:00:11.483951+00:00
+updated_at: 2026-10-31T14:08:41.628701+00:00
 tags:
   - ndc
   - cfr-207-33
@@ -99,8 +99,9 @@ case-exact change (vfm-8k1) narrows it. The exclusion must be in place before th
 
 ## NOT RULED: do the other 36 non-numeric codes follow?
 
-Athena has 39 non-numeric NDC concept_codes. Every one is non-conforming under 207.33(a), not
-only the three lower-case ones. RxNav returns `UNKNOWN` for all 39 (log
+Athena has 39 non-numeric NDC concept_codes. Every one is non-conforming under today's 207.33(a), not
+only the three lower-case ones. (Before November 29, 2016, 12 of them were legal; see the UPDATE
+below.) RxNav returns `UNKNOWN` for all 39 (log
 `ndc-nonnumeric-20261031-065836.log`). They are:
 
 - Mallinckrodt radiopharmaceuticals, labeler `00019`: `00019N068`, `00019N120`, `000199092B0`.
@@ -133,3 +134,109 @@ The directions:
 
 No rows in claims data were measured. Whether these 36 codes occur in any claims we hold is the
 fact that would separate (b) from (c).
+
+## UPDATE 2026-10-31: why OHDSI publishes them, and which of the 39 were ever NDCs
+
+Ryan, verbatim: "research why OHDSI is publishing them and verify if they are NDC or not".
+
+### Why OHDSI publishes them
+
+OHDSI builds the NDC vocabulary with `NDC_SPL/load_stage.sql` in the OHDSI/Vocabulary-v5.0 repo.
+Its sources are the FDA NDC files (`product.txt`, `package.txt`), the DailyMed SPL full releases,
+RxNorm, and the RxNav NDC history API. The script copies each code as the source gives it. It pads
+the labeler and product segments with zeros, and it sets the concept class from the string length:
+
+```
+LENGTH(concept_code) || '-digit NDC' AS concept_class_id,
+```
+
+No step checks that a code contains only digits. That is why `00019N068` is classed as a
+"9-digit NDC". The codes stay valid (end date 2099-12-31) because their drug labels are still on
+DailyMed and were never replaced. 37 of the 39 have no relationship at all in Athena. Two
+Mallinckrodt codes have a `Maps to`: `00019N450` to RxNorm `1546275` and `00019N452` to RxNorm
+Extension `OMOP4698583`.
+
+The OHDSI forum answer that `NDC.ALPHANUM` cites says the same thing from the other side: "they are
+not real NDC, but they will pop up in the data and hence we need to be able to handle them."
+
+### The rule changed in 2016, so the answer depends on the date
+
+The 2012 and 2016 editions of 21 CFR 207.35(b)(1) allowed letters, but only for drugs already in
+the original National Drug Code System. FDA had expanded those labelers' 3-character labeler codes
+to 4 characters with a lead zero. The text:
+
+```
+A manufacturer or distributor may either retain alphanumeric characters that are already used in
+the Product Code and Package Code segments of the National Drug Code or convert these alphanumeric
+characters to all numeric digits.
+```
+
+The 2016 final rule (Federal Register 2016-20471, effective November 29, 2016) replaced that text
+with today's 207.33(a). Its preamble says: "This final rule refers to the NDC as a numeric code,
+not an alphanumeric code. This takes into account comments that objected to the inclusion of alpha
+characters in NDCs as disruptive of current systems and practices."
+
+### The 39 codes fall into two groups
+
+**Group 1: legacy NDCs that were once legal. 12 codes, all from Mallinckrodt (labeler `0019`).**
+`0019` is a 4-digit labeler code from the original system, so the 207.35(b)(1) permission covered
+it. The codes: `00019N068`, `00019N068B0`, `00019N094`, `00019N096`, `00019N120`, `00019N180`,
+`00019N450`, `00019N452`, `00019N601`, `00019N602`, `000199092B0`, `000199092D0`.
+
+- Each `N` code has a numeric twin in Athena with `9` in the same position, for the same product:
+  `00019N068` and `000199068` are both Ultratag RBC. `00019N120` and `000199120` are both
+  thallous chloride Tl 201.
+- FindACode lists `00019-N068` (Ultratag RBC) as deleted on 2015-11-01 and `00019-N120`
+  (thallous chloride) as deleted on 2014-08-15. So the FDA directory once carried them.
+- The products moved to Curium (labeler `69945`) with numeric NDCs: Ultratag RBC is
+  `69945-068-20`, thallous chloride is `69945-120-56`, Technescan PYP is `69945-094-20`, and
+  sodium iodide I-123 is `69945-601-10` and `69945-602-20` (openFDA, 2026-10-31).
+- `000199092B0` and `000199092D0` (packages `B0` and `D0` of a sestamibi kit) are classified by
+  labeler only. No label or directory entry was found for them.
+
+These were NDCs. They can appear in claims from before the products were renumbered. They do not
+conform to today's 207.33(a).
+
+**Group 2: never NDCs under any version of the rule. 27 codes.** Each labeler has a 5-digit
+labeler code, which the original-system permission never covered.
+
+- 19 blood-bag codes from Haemonetics (`53157`) and Medsep (`62646`), NUTRICEL CP2D/AS-3 systems
+  under application BN820915. Their labels on DailyMed (setids
+  `e713f9f1-4208-4ea9-b33f-d758a06346ce`, 2013, and `6c5cf2fb-8f57-496e-b756-dfbfba07b516`, 2012)
+  list `53157-120-92`, `53157-120-BO`, `53157-AS3-PO` and similar. Each letter code has a numeric
+  sibling in Athena (`53157012092`). `053157AS3` and `062646AS3` are also padded in the wrong place
+  (the correct form is `531570AS3`), so they are OHDSI padding defects too.
+- 4 Pacific Garden soap and sanitizer codes, labeler `10685` (`106850687E5`, `106850688E5`,
+  `106850689BM`, `106850689E7`). The products now carry numeric NDCs under Georgia-Pacific's
+  labeler `54622` (`54622-687-37`, `54622-689-12`).
+- 3 oxygen codes (`1549912340a`, `1549912340b`, `5812800010a`). See the evidence above.
+- 1 placeholder, `041163NEW` (meclizine, labeler `41163`), whose product segment is the word `NEW`.
+
+### What this changes in the open question
+
+Before this research, the choices were "keep all 36 non-conforming codes" or "drop all 36". The
+research shows a third boundary: keep the 12 legacy Mallinckrodt NDCs in `NDC.ALPHANUM`'s target,
+because they were real NDCs, and exclude the 27 codes that never were. Under rule 2 of this repo,
+a code that was once a real NDC must not be a false negative in a row that admits historical
+codes. A code that was never an NDC can be.
+
+Not ruled. The question stays open in `vfm-39i`.
+
+### Related, not acted on
+
+The 2026 final rule (Federal Register 2026-04368, effective March 7, 2033) changes every NDC to a
+uniform 12-digit numeric format (6-4-2). Commenters proposed alphanumeric labeler codes, and FDA
+kept the code numeric. The NDC rows here will need a 12-digit form before 2033.
+
+### Sources and logs
+
+- OHDSI build: github.com/OHDSI/Vocabulary-v5.0, `NDC_SPL/load_stage.sql` and `readme.md`.
+- 21 CFR 207.35, 2012 and 2016 editions (govinfo.gov). 21 CFR 207.33, current edition (eCFR API).
+- Federal Register 2016-20471 and 2026-04368 (federalregister.gov API).
+- DailyMed `spls.json?ndc=` and `spls/<setid>/ndcs.json`. openFDA `drug/ndc`. FindACode's
+  Mallinckrodt labeler page.
+- Logs in the primary checkout's `claude_stuff/` (not committed):
+  `ndc-nonnumeric-rel-20261031-070423.log`, `ohdsi-ndc-build-20261031-070434.log`,
+  `ndc-nonnumeric-spl-20261031-070503.log`, `ndc-nonnumeric-spl2-20261031-070514.log`,
+  `ndc-openfda-labelers-20261031-070533.log`, `ndc-nonnumeric-twins-20261031-070615.log`,
+  `cfr-207-35-2012-20261031-070650.log`, `fr-2016-ndc-alnum-*.log`, `fr-ndc-detail-*.log`.
