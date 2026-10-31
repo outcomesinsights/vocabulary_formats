@@ -298,14 +298,20 @@
       "concept_vocabulary_ids": ["NDC"],
       "code_filter": {
         "pattern": "[0-9]+",
-        "why": "The FULL vocabulary, both the 9- and 11-digit forms -- but numeric only. The 39 alphanumeric concept_codes are NDC.ALPHANUM's target (see vfm-8l5)."
+        "why": "The FULL vocabulary, both the 9- and 11-digit forms -- but numeric only. The 39 alphanumeric concept_codes are NDC.ALPHANUM's concern (see vfm-8l5); 36 are in its target and 3 lower-case ones are excluded there (vfm-5g7)."
       }
     },
     {
       "vocabulary_id": "NDC.ALPHANUM",
       "source": "athena",
       "concept_vocabulary_ids": ["NDC"],
-      "class_note": "No filter: every NDC concept_code, alphanumeric forms included. This is the widest of the three NDC rows and the only one with no in-target exclusions."
+      "class_note": "No filter: every NDC concept_code, alphanumeric forms included. This is the widest of the three NDC rows.",
+      "exclusions": [
+        {
+          "codes": ["1549912340a", "1549912340b", "5812800010a"],
+          "why": "Non-conforming NDCs (seed vfm-5g7): 21 CFR 207.33(a) says 'The NDC for a drug is a numeric code', and each segment 'consists of' digits. These three oxygen-gas codes come from a 2010 label (DailyMed SPL 1df5a2d7-fb0f-49b1-981b-d019f436750c) that ran past package 9 in a one-digit package segment and continued with -a and -b, which OHDSI padded to 0a and 0b. NLM RxNav returns UNKNOWN for all three, while their numeric siblings (15499123401, 58128000101) are known. They are also lower case, so the case-exact ruling (vfm-8k1) would reject them. The other 36 non-numeric NDC codes stay in this target until vfm-5g7 is ruled."
+        }
+      ]
     },
     {
       "vocabulary_id": "NDC.PUBLISHED",
