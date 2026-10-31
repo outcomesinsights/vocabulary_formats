@@ -309,7 +309,7 @@
       "exclusions": [
         {
           "codes": ["1549912340a", "1549912340b", "5812800010a"],
-          "why": "Non-conforming NDCs (seed vfm-5g7): 21 CFR 207.33(a) says 'The NDC for a drug is a numeric code', and each segment 'consists of' digits. These three oxygen-gas codes come from a 2010 label (DailyMed SPL 1df5a2d7-fb0f-49b1-981b-d019f436750c) that ran past package 9 in a one-digit package segment and continued with -a and -b, which OHDSI padded to 0a and 0b. NLM RxNav returns UNKNOWN for all three, while their numeric siblings (15499123401, 58128000101) are known. They are also lower case, so the case-exact ruling (vfm-8k1) would reject them. The other 36 non-numeric NDC codes stay in this target (ruled 2026-10-31, vfm-39i): 12 are legacy Mallinckrodt NDCs that were legal before November 29, 2016, and 27 never were, but OHDSI publishes all of them."
+          "why": "Excluded for CASE only (vfm-8k1: rows are case-exact). The letters are respected (ruled 2026-10-31, vfm-5g7): legacy NDCs allowed alphanumeric segments, and no evidence shows these codes did not exist. They come from a 2010 oxygen label (DailyMed SPL 1df5a2d7-fb0f-49b1-981b-d019f436750c) that listed packages -a and -b, which OHDSI padded to 0a and 0b. An upper-case spelling such as 1549912340A belongs in this target. The other 36 non-numeric NDC codes stay in this target (vfm-39i): 12 legacy Mallinckrodt codes and 24 others."
         }
       ]
     },

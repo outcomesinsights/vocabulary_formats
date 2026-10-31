@@ -4,7 +4,7 @@ title: 'Declare case-insensitivity explicitly: patterns are case-exact unless a 
 status: captured
 type: decision
 created_at: 2026-10-31T13:42:05.631880+00:00
-updated_at: 2026-10-31T13:55:19.520365+00:00
+updated_at: 2026-10-31T14:17:25.991281+00:00
 tags:
   - case
   - case-sensitivity
@@ -183,3 +183,11 @@ they are upper case and outside this ruling.
 
 Hazard for the test: `1549912340a` is 11 characters. If `NDC.ALPHANUM` narrows to upper case,
 `just test` reports these three as false negatives until the exclusion lands in the same change.
+
+## UPDATE 2026-10-31: the three oxygen codes are excluded for case only
+
+Ryan later ruled (seed vfm-5g7) that letters in NDC segments are respected, because legacy NDCs
+allowed them and no evidence shows these codes did not exist. So the section above that calls the
+three lower-case codes "bad" holds only for their lower-case spelling. An upper-case spelling such
+as `1549912340A` belongs in `NDC.ALPHANUM`'s target and must pass the row after it becomes
+case-exact.

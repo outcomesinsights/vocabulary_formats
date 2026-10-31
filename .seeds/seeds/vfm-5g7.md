@@ -4,7 +4,7 @@ title: 'Non-conforming NDCs (21 CFR 207.33(a): an NDC is numeric): the three low
 status: resolved
 type: decision
 created_at: 2026-10-31T14:00:02.452446+00:00
-updated_at: 2026-10-31T14:13:31.420468+00:00
+updated_at: 2026-10-31T14:17:08.544616+00:00
 resolved_at: 2026-10-31T14:13:31.420459+00:00
 resolution: Three lower-case oxygen codes excluded from NDC.ALPHANUM's target as non-conforming under 21 CFR 207.33(a) (commit 81f449a). The other 36 non-numeric NDC codes stay in the target (ruled 2026-10-31, vfm-39i).
 tags:
@@ -199,8 +199,11 @@ it. The codes: `00019N068`, `00019N068B0`, `00019N094`, `00019N096`, `00019N120`
 These were NDCs. They can appear in claims from before the products were renumbered. They do not
 conform to today's 207.33(a).
 
-**Group 2: never NDCs under any version of the rule. 27 codes.** Each labeler has a 5-digit
-labeler code, which the original-system permission never covered.
+**Group 2: outside the original-system permission. 27 codes.** Each labeler has a 5-digit
+labeler code, which that permission did not cover. The regulation text did not allow their
+letters. But the FDA accepted these codes on submitted drug labels, and no evidence shows that
+they did not exist as NDCs. (Corrected 2026-10-31: this heading first said "never NDCs under any
+version of the rule", which the evidence does not support.)
 
 - 19 blood-bag codes from Haemonetics (`53157`) and Medsep (`62646`), NUTRICEL CP2D/AS-3 systems
   under application BN820915. Their labels on DailyMed (setids
@@ -218,9 +221,9 @@ labeler code, which the original-system permission never covered.
 
 Before this research, the choices were "keep all 36 non-conforming codes" or "drop all 36". The
 research shows a third boundary: keep the 12 legacy Mallinckrodt NDCs in `NDC.ALPHANUM`'s target,
-because they were real NDCs, and exclude the 27 codes that never were. Under rule 2 of this repo,
-a code that was once a real NDC must not be a false negative in a row that admits historical
-codes. A code that was never an NDC can be.
+because they were real NDCs, and exclude the 27 codes outside the original-system permission.
+Under rule 2 of this repo, a code that was once a real NDC must not be a false negative in a row
+that admits historical codes.
 
 Not ruled. The question stays open in `vfm-39i`.
 
@@ -248,9 +251,35 @@ kept the code numeric. The NDC rows here will need a 12-digit form before 2033.
 Ryan, verbatim: "for ndcalphanum, keep all 36".
 
 All 36 non-numeric, upper-case NDC codes stay in `NDC.ALPHANUM`'s target. That includes the 12
-legacy Mallinckrodt NDCs and the 27 codes that were never NDCs. The three lower-case oxygen codes
+legacy Mallinckrodt NDCs and 24 codes from labelers outside the original-system permission. The
+three lower-case oxygen codes
 stay excluded. `NDC.ALPHANUM` is not retired. The 207.33(a) evidence above stays as the record of
 which codes are legacy NDCs and which are not, in case the question returns.
 
 Ryan will discuss the codesistant side of case sensitivity with a codesistant agent himself
 (codesistant seed `cst-gp2`).
+
+## RULED 2026-10-31 (Ryan): letters in legacy NDCs are respected for the foreseeable future
+
+Ryan, verbatim: "for my ruling on ndcs with alphas -- we don't _knnow_ the 27 "never were" as far
+as I know because we've never seen evidence they didn't exist (that's hard evidence to find) and
+apparently legacy NDC allowed alphas, so we need to respect that for the foreseeable future".
+
+What this corrects:
+
+- The claim "never NDCs" was an inference from the regulation text, not evidence. It is corrected
+  in place above. The evidence points the other way: the FDA accepted these codes on submitted
+  labels (DailyMed SPLs for the blood bags and the oxygen), and the FDA directory once listed
+  Mallinckrodt's `N` codes.
+- The count was also wrong. Group 2 has 27 codes, and it includes the three lower-case oxygen
+  codes. The 36 codes kept in `NDC.ALPHANUM` are 12 Mallinckrodt codes and 24 others.
+
+The rule from here on: a letter in an NDC segment is not, by itself, evidence that a code is bad.
+207.33(a) does not decide whether a code belongs in `NDC.ALPHANUM`'s target. The title of this
+seed and the request that opened it ("filter out bad NDCs that don't conform to CFR 207.33(a)")
+describe a position that this ruling replaces.
+
+The three oxygen codes stay excluded, but for case only (vfm-8k1). Their letters are respected. An
+upper-case spelling such as `1549912340A` belongs in `NDC.ALPHANUM`'s target and must pass the
+row after it becomes case-exact. The exclusion's `why` in `checks/validation_targets.json` now
+says this.
