@@ -15,6 +15,7 @@ __pycache__/
 # Claude Code agent worktrees — local, per-agent; never committed
 .claude/worktrees/
 
-# Beads export — derived. The Dolt remote at refs/dolt/data is the store
-# and the backup; this file is kept on disk for local grep only.
+# Beads JSONL export -- not supported. The Dolt remote at refs/dolt/data is the store and the
+# backup. Ignored so a stray export is never committed; delete one if it appears, because
+# `bd bootstrap` would load from it if the Dolt remote failed.
 .beads/issues.jsonl

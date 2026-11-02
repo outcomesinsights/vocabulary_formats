@@ -1,0 +1,4 @@
+# Gitignored inputs the push gate needs. The gate runs `ci` in its own worktree under
+# ~/.cache/gator-gate/, and copies every path marked worktree-share into it first. Without
+# .env, `just test` finds no substrate, skips every row and passes (gator githooks design).
+.env worktree-share

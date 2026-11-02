@@ -24,6 +24,13 @@ set dotenv-load
 # default: the gate that needs nothing
 default: lint
 
+# Install the pinned tools and arm THIS checkout's hooks (gator's githooks standard). Every
+# clone, host and worktree runs it once: a hook arrangement cannot travel in a commit.
+setup:
+    mise install
+    @if [ -d .beads ] && [ ! -d .beads/embeddeddolt ] && command -v bd >/dev/null 2>&1; then bd bootstrap; fi
+    @if [ -d .githooks ]; then git config core.hooksPath .githooks; fi
+
 # THE GATE. Regexps compile; no anchors; no top-level alternation; unique keys; parquet in sync
 # with the TSV; every row's validation target declared. Rules live in checks/lint.py.
 lint:
@@ -79,49 +86,22 @@ fmt:
 fmt-check:
     treefmt --fail-on-change
 
+# The seed store's own check. --gate, not --against-git: only --gate honours
+# SEEDS_GATE_CONFIRM=1, the escape for an intended rewrite of many seeds (seeds-ikkx).
+seeds-check:
+    @command -v seeds >/dev/null 2>&1 || exit 0; seeds check --gate
+
 # Full local CI equivalent — run this before pushing.
 # This repo has no hosted CI, so this recipe IS the contract: the push gate
 # (.githooks/pre-push) runs it at the pushed commit, and a check it lacks is not run at all.
-ci: fmt-check lint test
+ci: lint fmt-check test seeds-check
 
-# What actually runs before a push. Defaults to the complete `ci`; point it at
-# something smaller ONLY where running complete CI locally is impractical.
+# Kept for checkouts still on the old hook wrappers, which call it by name. The standard
+# .githooks/pre-push runs `ci` at the pushed commit instead. Delete this recipe only when every
+# checkout of this repo is armed (gator docs/githooks-migration.md, "Ending the transition").
 pre-push: ci
 
-# Runs on every commit, so it must stay FAST — a sub-minute budget. Tests belong
-# here when they fit; lint alone when they do not. fmt-check never rewrites.
-pre-commit: fmt-check lint test
-
-# Arm THIS clone's git hooks. A gate in .git/hooks is per-clone and untracked, so a
-# fresh clone silently has none; this recipe is the tracked declaration that one is
-# expected, plus the installer. `habituate repo-doctor` reports an unarmed clone.
-# Chains the beads hook first and preserves any hook it did not write.
-hooks:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    root="$(git rev-parse --show-toplevel)"
-    hooks="$(git rev-parse --git-path hooks)"
-    mkdir -p "$hooks"
-    for h in pre-commit pre-push; do
-        just --summary 2>/dev/null | tr ' ' '\n' | grep -qx "$h" || continue
-        live="$hooks/$h"
-        # Never clobber a hook this recipe did not write; chain it instead.
-        keep=""
-        if [ -f "$live" ] && ! grep -qs 'just hooks' "$live"; then
-            mkdir -p "$hooks/preserved"
-            keep="$hooks/preserved/$h"
-            [ -e "$keep" ] || { mv "$live" "$keep"; chmod +x "$keep"; }
-        fi
-        {
-            echo '#!/usr/bin/env sh'
-            echo '# Written by `just hooks`. Re-run to regenerate.'
-            echo 'set -e'
-            echo 'root="$(git rev-parse --show-toplevel)"'
-            echo 'hooks="$(git rev-parse --git-path hooks)"'
-            [ -n "$keep" ] && echo "p=\"\$hooks/preserved/$h\"; [ -x \"\$p\" ] && { \"\$p\" \"\$@\" || exit \$?; }"
-            echo "b=\"\$root/.beads/hooks/$h\"; [ -x \"\$b\" ] && { \"\$b\" \"\$@\" || exit \$?; }"
-            echo "cd \"\$root\" && exec just $h"
-        } > "$live"
-        chmod +x "$live"
-        echo "armed: $h"
-    done
+# The commit gate. The standard .githooks/pre-commit runs this on the working tree. `test` is
+# NOT here: it takes about 51 s (measured 2026-11-02), over the 30 s commit budget, so it runs
+# in `ci` at every push instead.
+pre-commit: fmt-check lint seeds-check
