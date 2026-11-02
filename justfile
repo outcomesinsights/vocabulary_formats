@@ -31,9 +31,32 @@ setup:
     @if [ -d .beads ] && [ ! -d .beads/embeddeddolt ] && command -v bd >/dev/null 2>&1; then bd bootstrap; fi
     @if [ -d .githooks ]; then git config core.hooksPath .githooks; fi
 
+# Commit subjects, checked by cog: the commits since the newest v tag when there are 20 or
+# fewer, else the newest 20. A repo with 20 commits or fewer checks all of them, and one with
+# no commits passes. A shallow clone fails, because the commits are not there (gator-2u7).
+_commits:
+    #!/bin/sh
+    set -eu
+    if ! git rev-parse -q --verify HEAD >/dev/null; then
+        echo "cog: no commits yet"
+        exit 0
+    fi
+    if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
+        echo "cog: this clone is shallow, so the commits to check are not here; clone with fetch-depth: 0" >&2
+        exit 1
+    fi
+    tag="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null)" || tag=""
+    if [ -n "$tag" ] && [ "$(git rev-list --count "$tag..HEAD")" -le 20 ]; then
+        exec cog check --ignore-merge-commits "$tag..HEAD"
+    elif [ "$(git rev-list --first-parent --count HEAD)" -gt 20 ]; then
+        exec cog check --ignore-merge-commits HEAD~20..HEAD
+    else
+        exec cog check --ignore-merge-commits
+    fi
+
 # THE GATE. Regexps compile; no anchors; no top-level alternation; unique keys; parquet in sync
-# with the TSV; every row's validation target declared. Rules live in checks/lint.py.
-lint:
+# with the TSV; every row's validation target declared; commit subjects (cog). Rules live in checks/lint.py.
+lint: _commits
     #!/usr/bin/env bash
     set -uo pipefail
     ruff check || exit 1
