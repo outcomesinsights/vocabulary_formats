@@ -1,0 +1,20 @@
+# Tool pins for this repo's recipes, copied line for line from gator's standard/mise.toml
+# (seed gator-rga). `just setup` runs `mise install`. Only the tools that treefmt.toml and the
+# lint recipe run are pinned here; mdformat runs through uvx and duckdb through `uv run --with`.
+
+[tools]
+# the baseline a clone needs beyond git: the recipe runner and the Python toolchain
+just = "1"
+uv = "0"
+
+# the fmt layer and the formatters it drives
+"aqua:numtide/treefmt" = "2"
+# prettier uses mise's npm backend, which installs NO node, so the node pin travels with it
+# (gator-ncm).
+node = "24"
+prettier = "3"
+taplo = "0"
+
+# lint
+ruff = "0"
+cocogitto = "7"

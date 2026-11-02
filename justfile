@@ -29,6 +29,7 @@ default: lint
 lint:
     #!/usr/bin/env bash
     set -uo pipefail
+    ruff check || exit 1
     mkdir -p claude_stuff
     log="claude_stuff/lint-$(date +%Y%m%d-%H%M%S).log"
     {{ python }} checks/lint.py 2>&1 | tee "$log"
@@ -69,22 +70,18 @@ prose *ARGS:
 parquet:
     make all
 
-# Rewrite files to canonical format. Run deliberately; never from a hook.
+# Format every tracked file, in every language present. Config: treefmt.toml (gator's blocks).
 fmt:
-    uv run ruff format .
-    just --fmt --unstable
-    git ls-files "*.md" | xargs -r mdformat
+    treefmt
 
-# Report format drift without changing anything. This is what the hooks run —
-# a formatter that rewrites files mid-commit changes what you already reviewed.
+# Report format drift. treefmt --fail-on-change FORMATS and then exits 1: fix-and-fail, so
+# re-stage and commit again.
 fmt-check:
-    uv run ruff format --check .
-    just --fmt --check --unstable
-    git ls-files "*.md" | xargs -r mdformat --check
+    treefmt --fail-on-change
 
 # Full local CI equivalent — run this before pushing.
-# The recipe IS the contract: if CI runs a check and this does not, the gate is
-# decorative (see ~/.config/home-manager/docs/ci-gates.md).
+# This repo has no hosted CI, so this recipe IS the contract: the push gate
+# (.githooks/pre-push) runs it at the pushed commit, and a check it lacks is not run at all.
 ci: fmt-check lint test
 
 # What actually runs before a push. Defaults to the complete `ci`; point it at

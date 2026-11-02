@@ -1,0 +1,91 @@
+# The fleet's formatter blocks -- the canonical copy (seed gator-rga, ruled 2026-10-02).
+#
+# A repo's treefmt.toml is assembled FROM this file: the [global] table, then the
+# [formatter.*] blocks for the languages the repo contains, copied byte for byte. A repo
+# carries fewer blocks, never different ones: gator-doctor compares each block it finds
+# against this file and reports drift. Options are not per repo -- the point of one
+# standard is that an agent moving between repos meets one rule.
+#
+# Why a repo cannot carry every block: treefmt refuses to start if ANY configured
+# formatter's binary is missing from PATH, even when no file matches its globs (measured,
+# treefmt 2.6.0, 2026-10-02). So a Python-only repo that listed [formatter.rubocop] would
+# fail on a host without Ruby. That is also D6 -- a missing tool fails loudly -- for free.
+#
+# `treefmt` is `just fmt`; `treefmt --fail-on-change` is `just fmt-check`, and note that it
+# FORMATS THE TREE AND THEN EXITS 1 (measured). That is formatter-hook semantics: the fix is
+# applied, the gate fails, the author re-stages. What the standard forbids is a hook that
+# rewrites and SUCCEEDS silently.
+
+[global]
+excludes = [
+  # generated or owned by another tool
+  "*.lock",
+  "uv.lock",
+  "Gemfile.lock",
+  "package-lock.json",
+  "yarn.lock",
+  "renv.lock",
+  "*.min.*",
+  # other tools' stores: their formatters are their own business
+  ".beads/**",
+  ".seeds/**",
+  "claude_stuff/**",
+  "node_modules/**",
+  "vendor/**",
+  ".claude/worktrees/**",
+]
+
+# --- Python: ruff formats, then applies its SAFE autofixes (P2: defaults + I). ---------
+# Bare `ruff`, provided by the `ruff = "0"` pin in mise.toml (ruled 2026-10-08): nothing
+# in a project depends on ruff, so it is a dev tool like shellcheck, not a project dep, and
+# the pin works whether or not the repo has a root uv project (record-demo has none; its
+# only Python project drags in torch). Without the pin this block passes on a host with a
+# global ruff and fails CI with "formatter command not found in PATH" (gator, run
+# 37721009457, 2026-10-07); gator-doctor reports the missing pin.
+[formatter.ruff-format]
+command = "ruff"
+options = ["format"]
+includes = ["*.py", "*.pyi"]
+priority = 1
+
+[formatter.ruff-check]
+command = "ruff"
+options = ["check", "--fix", "--exit-zero"]
+includes = ["*.py", "*.pyi"]
+priority = 2
+
+# --- Markdown: mdformat with the repo's TRACKED .mdformat.toml (gfm + frontmatter, ------
+# number = true). Without that file mdformat inherits ~/.mdformat.toml under HOME and
+# nothing elsewhere; the doctor reports the missing file. Run through uvx so it needs no
+# pin: mdformat is a PyPI tool and its plugins must live in the same environment --
+# uvx builds and caches that (0.3s warm, measured). uv is the baseline every clone has.
+[formatter.mdformat]
+command = "uvx"
+options = [
+  "--from",
+  "mdformat",
+  "--with",
+  "mdformat-gfm",
+  "--with",
+  "mdformat-frontmatter",
+  "mdformat",
+]
+includes = ["*.md"]
+
+# --- justfile -----------------------------------------------------------------------------
+[formatter.just]
+command = "just"
+options = ["--fmt", "--unstable", "--justfile"]
+includes = ["justfile", "Justfile", "*.just"]
+
+# --- YAML and JSON: prettier on its defaults (D4). ----------------------------------------
+[formatter.prettier]
+command = "prettier"
+options = ["--write"]
+includes = ["*.yml", "*.yaml", "*.json"]
+
+# --- TOML: taplo on its defaults (D4). ----------------------------------------------------
+[formatter.taplo]
+command = "taplo"
+options = ["fmt"]
+includes = ["*.toml"]
